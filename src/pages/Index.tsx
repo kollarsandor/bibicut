@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import JSZip from 'jszip';
 import { Scissors, RefreshCcw, Sparkles } from 'lucide-react';
 import { UploadZone } from '@/components/UploadZone';
@@ -7,88 +7,79 @@ import { DownloadSection } from '@/components/DownloadSection';
 import { useVideoProcessor } from '@/hooks/useVideoProcessor';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
+import type { VideoChunk } from '@/types/video';
+import { FILE_CONFIG } from '@/constants/config';
+import { TRANSLATIONS } from '@/constants/translations';
 
-interface VideoChunk {
-  name: string;
-  startTime: number;
-  endTime: number;
-  blob: Blob;
-}
+const downloadBlob = (blob: Blob, filename: string): void => {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  URL.revokeObjectURL(url);
+};
 
 const Index = () => {
   const { toast } = useToast();
   const [isDownloading, setIsDownloading] = useState(false);
-  const {
-    status,
-    progress,
-    currentStep,
-    chunks,
-    totalChunks,
-    processedChunks,
-    processVideo,
-    processYoutubeUrl,
-    reset,
-  } = useVideoProcessor();
+  const { status, progress, currentStep, chunks, totalChunks, processedChunks, processVideo, processYoutubeUrl, reset } = useVideoProcessor();
 
-  const handleFileSelect = async (file: File) => {
-    toast({
-      title: "Videó kiválasztva",
-      description: `${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)`,
-    });
-    await processVideo(file);
-  };
+  const handleFileSelect = useCallback(
+    async (file: File) => {
+      const fileSizeMb = file.size / FILE_CONFIG.BYTES_PER_MB;
+      toast({
+        title: TRANSLATIONS.index.videoSelected,
+        description: `${file.name} (${fileSizeMb.toFixed(1)} MB)`,
+      });
+      await processVideo(file);
+    },
+    [toast, processVideo]
+  );
 
-  const handleYoutubeUrl = async (url: string) => {
-    toast({
-      title: "YouTube videó feldolgozása",
-      description: "Videó letöltése és darabolása folyamatban...",
-    });
-    await processYoutubeUrl(url);
-  };
+  const handleYoutubeUrl = useCallback(
+    async (url: string) => {
+      toast({
+        title: TRANSLATIONS.index.youtubeProcessing,
+        description: TRANSLATIONS.index.youtubeProcessingDesc,
+      });
+      await processYoutubeUrl(url);
+    },
+    [toast, processYoutubeUrl]
+  );
 
-  const handleDownloadAll = async () => {
+  const handleDownloadAll = useCallback(async () => {
     setIsDownloading(true);
     try {
       const zip = new JSZip();
-      
+
       chunks.forEach((chunk) => {
         zip.file(chunk.name, chunk.blob);
       });
-      
+
       const content = await zip.generateAsync({ type: 'blob' });
-      const url = URL.createObjectURL(content);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'video_chunks.zip';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      
+      downloadBlob(content, FILE_CONFIG.ZIP_FILENAME);
+
       toast({
-        title: "Letöltés elkezdődött",
-        description: `${chunks.length} videó részlet ZIP fájlban`,
+        title: TRANSLATIONS.download.downloadStarted,
+        description: TRANSLATIONS.download.downloadDescription(chunks.length),
       });
     } catch (error) {
+      console.error('ZIP creation error:', error);
       toast({
-        title: "Hiba",
-        description: "Nem sikerült létrehozni a ZIP fájlt",
-        variant: "destructive",
+        title: TRANSLATIONS.download.error,
+        description: TRANSLATIONS.download.zipError,
+        variant: 'destructive',
       });
     }
     setIsDownloading(false);
-  };
+  }, [chunks, toast]);
 
-  const handleDownloadSingle = (chunk: VideoChunk) => {
-    const url = URL.createObjectURL(chunk.blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = chunk.name;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
+  const handleDownloadSingle = useCallback((chunk: VideoChunk) => {
+    downloadBlob(chunk.blob, chunk.name);
+  }, []);
 
   const isProcessing = status === 'loading' || status === 'processing';
 
@@ -96,59 +87,36 @@ const Index = () => {
     <div className="min-h-screen py-12 px-4 sm:px-6 lg:px-8">
       <header className="text-center mb-12">
         <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl gradient-accent mb-6 glow-strong animate-float">
-          <Scissors className="w-10 h-10 text-primary-foreground" />
+          <Scissors className="w-10 h-10 text-primary-foreground" aria-hidden="true" />
         </div>
-        
+
         <h1 className="text-4xl sm:text-5xl font-bold text-foreground mb-4">
-          Videó <span className="text-gradient">Daraboló</span>
+          {TRANSLATIONS.index.title.split(' ')[0]} <span className="text-gradient">{TRANSLATIONS.index.title.split(' ')[1]}</span>
         </h1>
-        
+
         <p className="text-lg text-muted-foreground max-w-xl mx-auto">
-          Tölts fel bármilyen videót, és automatikusan 1 perces részekre vágjuk.
+          {TRANSLATIONS.index.subtitle}
           <br />
           <span className="inline-flex items-center gap-1 text-sm mt-2">
-            <Sparkles className="w-4 h-4 text-primary" />
-            YouTube linkkel is működik!
+            <Sparkles className="w-4 h-4 text-primary" aria-hidden="true" />
+            {TRANSLATIONS.index.youtubeSupport}
           </span>
         </p>
       </header>
 
       <main className="space-y-8">
-        {status === 'idle' && (
-          <UploadZone
-            onFileSelect={handleFileSelect}
-            onYoutubeUrl={handleYoutubeUrl}
-            isProcessing={isProcessing}
-          />
-        )}
+        {status === 'idle' && <UploadZone onFileSelect={handleFileSelect} onYoutubeUrl={handleYoutubeUrl} isProcessing={isProcessing} />}
 
-        {(status === 'loading' || status === 'processing') && (
-          <ProcessingStatus
-            status={status}
-            progress={progress}
-            currentStep={currentStep}
-            totalChunks={totalChunks}
-            processedChunks={processedChunks}
-          />
-        )}
+        {(status === 'loading' || status === 'processing') && <ProcessingStatus status={status} progress={progress} currentStep={currentStep} totalChunks={totalChunks} processedChunks={processedChunks} />}
 
         {status === 'complete' && (
           <>
-            <DownloadSection
-              chunks={chunks}
-              onDownloadAll={handleDownloadAll}
-              onDownloadSingle={handleDownloadSingle}
-              isDownloading={isDownloading}
-            />
-            
+            <DownloadSection chunks={chunks} onDownloadAll={handleDownloadAll} onDownloadSingle={handleDownloadSingle} isDownloading={isDownloading} />
+
             <div className="flex justify-center">
-              <Button
-                variant="outline"
-                size="lg"
-                onClick={reset}
-              >
-                <RefreshCcw className="w-4 h-4 mr-2" />
-                Új videó feldolgozása
+              <Button variant="outline" size="lg" onClick={reset}>
+                <RefreshCcw className="w-4 h-4 mr-2" aria-hidden="true" />
+                {TRANSLATIONS.index.newVideo}
               </Button>
             </div>
           </>
@@ -156,11 +124,11 @@ const Index = () => {
 
         {status === 'error' && (
           <div className="text-center">
-            <div className="gradient-card rounded-2xl p-8 border border-destructive/50 max-w-md mx-auto">
+            <div className="gradient-card rounded-2xl p-8 border border-destructive/50 max-w-md mx-auto" role="alert">
               <p className="text-destructive mb-4">{currentStep}</p>
               <Button variant="outline" onClick={reset}>
-                <RefreshCcw className="w-4 h-4 mr-2" />
-                Újrapróbálás
+                <RefreshCcw className="w-4 h-4 mr-2" aria-hidden="true" />
+                {TRANSLATIONS.index.retry}
               </Button>
             </div>
           </div>
@@ -168,8 +136,8 @@ const Index = () => {
       </main>
 
       <footer className="mt-16 text-center text-sm text-muted-foreground">
-        <p>A fájl feltöltés a böngésződben történik, a YouTube letöltés szerveren keresztül.</p>
-        <p className="mt-1">A videóid biztonságban vannak.</p>
+        <p>{TRANSLATIONS.index.footerLine1}</p>
+        <p className="mt-1">{TRANSLATIONS.index.footerLine2}</p>
       </footer>
     </div>
   );
