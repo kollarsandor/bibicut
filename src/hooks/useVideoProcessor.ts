@@ -155,21 +155,28 @@ export const useVideoProcessor = (): UseVideoProcessorReturn => {
 
           for (let i = batchStart; i < batchEnd; i++) {
             const startTime = i * chunkDuration;
-            const endTime = Math.min((i + 1) * chunkDuration, videoDuration);
+            const actualDuration = Math.min(chunkDuration, videoDuration - startTime);
+            const endTime = startTime + actualDuration;
             const outputName = `part_${String(i + 1).padStart(VIDEO_PROCESSOR_CONFIG.PADDING_DIGITS, '0')}.mp4`;
 
             const processChunk = async (): Promise<VideoChunk> => {
               await ffmpeg.exec([
-                '-ss',
-                startTime.toString(),
                 '-i',
                 inputName,
+                '-ss',
+                startTime.toString(),
                 '-t',
-                chunkDuration.toString(),
-                '-c',
-                'copy',
+                actualDuration.toString(),
+                '-c:v',
+                'libx264',
+                '-c:a',
+                'aac',
+                '-preset',
+                'ultrafast',
                 '-avoid_negative_ts',
                 'make_zero',
+                '-fflags',
+                '+genpts',
                 '-movflags',
                 '+faststart',
                 outputName,
