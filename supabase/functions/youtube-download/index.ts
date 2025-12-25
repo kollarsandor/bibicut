@@ -21,112 +21,173 @@ function extractVideoId(url: string): string | null {
   return null;
 }
 
-async function getVideoInfo(videoId: string): Promise<{title: string, formats: any[]}> {
-  console.log('Fetching video info for:', videoId);
+async function downloadWithCobalt(url: string): Promise<{videoData: Uint8Array, filename: string}> {
+  console.log('Requesting download from Cobalt API...');
   
-  const watchUrl = `https://www.youtube.com/watch?v=${videoId}`;
-  const response = await fetch(watchUrl, {
+  const cobaltResponse = await fetch('https://api.cobalt.tools/api/json', {
+    method: 'POST',
     headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept-Language': 'en-US,en;q=0.9',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-    }
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      url: url,
+      vCodec: 'h264',
+      vQuality: '720',
+      aFormat: 'mp3',
+      filenamePattern: 'basic',
+      isAudioOnly: false,
+      disableMetadata: false,
+    })
   });
-  
-  if (!response.ok) {
-    throw new Error(`Failed to fetch YouTube page: ${response.status}`);
+
+  if (!cobaltResponse.ok) {
+    const errorText = await cobaltResponse.text();
+    console.error('Cobalt API error:', errorText);
+    throw new Error(`Cobalt API error: ${cobaltResponse.status}`);
   }
-  
-  const html = await response.text();
-  
-  const playerResponseMatch = html.match(/var ytInitialPlayerResponse\s*=\s*(\{.+?\});/s);
-  if (!playerResponseMatch) {
-    const altMatch = html.match(/ytInitialPlayerResponse\s*=\s*(\{.+?\});/s);
-    if (!altMatch) {
-      console.error('Could not find player response in page');
-      throw new Error('Could not extract video information from YouTube');
+
+  const cobaltData = await cobaltResponse.json();
+  console.log('Cobalt response:', JSON.stringify(cobaltData));
+
+  if (cobaltData.status === 'error') {
+    throw new Error(cobaltData.text || 'Failed to process video');
+  }
+
+  if (cobaltData.status === 'redirect' || cobaltData.status === 'stream') {
+    const downloadUrl = cobaltData.url;
+    console.log('Downloading from:', downloadUrl);
+
+    const videoResponse = await fetch(downloadUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      }
+    });
+
+    if (!videoResponse.ok) {
+      throw new Error(`Failed to download video: ${videoResponse.status}`);
+    }
+
+    const arrayBuffer = await videoResponse.arrayBuffer();
+    const videoData = new Uint8Array(arrayBuffer);
+    
+    const contentDisposition = videoResponse.headers.get('content-disposition');
+    let filename = 'video.mp4';
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+      if (filenameMatch && filenameMatch[1]) {
+        filename = filenameMatch[1].replace(/['"]/g, '');
+      }
+    }
+
+    console.log('Downloaded video size:', videoData.byteLength, 'bytes');
+    return { videoData, filename };
+  }
+
+  if (cobaltData.status === 'picker') {
+    const videoItem = cobaltData.picker?.find((item: any) => item.type === 'video') || cobaltData.picker?.[0];
+    if (videoItem && videoItem.url) {
+      console.log('Downloading from picker:', videoItem.url);
+      
+      const videoResponse = await fetch(videoItem.url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        }
+      });
+
+      if (!videoResponse.ok) {
+        throw new Error(`Failed to download video: ${videoResponse.status}`);
+      }
+
+      const arrayBuffer = await videoResponse.arrayBuffer();
+      return { videoData: new Uint8Array(arrayBuffer), filename: 'video.mp4' };
     }
   }
-  
-  const jsonStr = playerResponseMatch ? playerResponseMatch[1] : html.match(/ytInitialPlayerResponse\s*=\s*(\{.+?\});/s)![1];
-  
-  let playerResponse;
-  try {
-    playerResponse = JSON.parse(jsonStr);
-  } catch (e) {
-    console.error('Failed to parse player response:', e);
-    throw new Error('Failed to parse video information');
-  }
-  
-  if (playerResponse.playabilityStatus?.status !== 'OK') {
-    const reason = playerResponse.playabilityStatus?.reason || 'Video is not available';
-    throw new Error(reason);
-  }
-  
-  const title = playerResponse.videoDetails?.title || 'video';
-  const formats: any[] = [];
-  
-  if (playerResponse.streamingData?.formats) {
-    formats.push(...playerResponse.streamingData.formats);
-  }
-  if (playerResponse.streamingData?.adaptiveFormats) {
-    formats.push(...playerResponse.streamingData.adaptiveFormats);
-  }
-  
-  if (formats.length === 0) {
-    throw new Error('No downloadable formats found for this video');
-  }
-  
-  return { title, formats };
+
+  throw new Error('Unexpected response from download service');
 }
 
-function selectBestFormat(formats: any[]): any {
-  const mp4Formats = formats.filter(f => 
-    f.mimeType?.includes('video/mp4') && 
-    f.url &&
-    f.qualityLabel
-  );
-  
-  if (mp4Formats.length === 0) {
-    const anyVideoWithUrl = formats.find(f => f.mimeType?.includes('video/') && f.url);
-    if (anyVideoWithUrl) {
-      return anyVideoWithUrl;
-    }
-    throw new Error('No suitable video format found');
-  }
-  
-  const qualityOrder = ['1080p', '720p', '480p', '360p', '240p', '144p'];
-  
-  for (const quality of qualityOrder) {
-    const format = mp4Formats.find(f => f.qualityLabel === quality);
-    if (format) {
-      return format;
-    }
-  }
-  
-  return mp4Formats[0];
-}
+async function downloadWithInvidious(videoId: string): Promise<{videoData: Uint8Array, title: string}> {
+  const instances = [
+    'https://invidious.snopyta.org',
+    'https://yewtu.be',
+    'https://inv.riverside.rocks',
+    'https://invidious.kavin.rocks',
+  ];
 
-async function downloadVideo(format: any): Promise<Uint8Array> {
-  console.log('Downloading video from URL, quality:', format.qualityLabel);
-  
-  const response = await fetch(format.url, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept': '*/*',
-      'Accept-Language': 'en-US,en;q=0.9',
-      'Range': 'bytes=0-',
+  let lastError: Error | null = null;
+
+  for (const instance of instances) {
+    try {
+      console.log(`Trying Invidious instance: ${instance}`);
+      
+      const infoResponse = await fetch(`${instance}/api/v1/videos/${videoId}`, {
+        headers: {
+          'Accept': 'application/json',
+        }
+      });
+
+      if (!infoResponse.ok) {
+        console.log(`Instance ${instance} returned ${infoResponse.status}`);
+        continue;
+      }
+
+      const videoInfo = await infoResponse.json();
+      console.log('Video title:', videoInfo.title);
+
+      const formatStreams = videoInfo.formatStreams || [];
+      const adaptiveFormats = videoInfo.adaptiveFormats || [];
+      
+      let selectedFormat = formatStreams.find((f: any) => 
+        f.container === 'mp4' && f.qualityLabel && parseInt(f.qualityLabel) <= 720
+      );
+
+      if (!selectedFormat && formatStreams.length > 0) {
+        selectedFormat = formatStreams[0];
+      }
+
+      if (!selectedFormat) {
+        const mp4Formats = adaptiveFormats.filter((f: any) => 
+          f.container === 'mp4' && f.type?.includes('video')
+        );
+        if (mp4Formats.length > 0) {
+          selectedFormat = mp4Formats[0];
+        }
+      }
+
+      if (!selectedFormat) {
+        console.log('No suitable format found on this instance');
+        continue;
+      }
+
+      console.log('Selected format:', selectedFormat.qualityLabel || 'adaptive');
+
+      const videoResponse = await fetch(selectedFormat.url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        }
+      });
+
+      if (!videoResponse.ok) {
+        console.log(`Failed to download: ${videoResponse.status}`);
+        continue;
+      }
+
+      const arrayBuffer = await videoResponse.arrayBuffer();
+      console.log('Downloaded:', arrayBuffer.byteLength, 'bytes');
+
+      return {
+        videoData: new Uint8Array(arrayBuffer),
+        title: videoInfo.title || 'video'
+      };
+
+    } catch (err) {
+      console.log(`Instance ${instance} failed:`, err);
+      lastError = err instanceof Error ? err : new Error(String(err));
     }
-  });
-  
-  if (!response.ok && response.status !== 206) {
-    throw new Error(`Failed to download video: ${response.status}`);
   }
-  
-  const arrayBuffer = await response.arrayBuffer();
-  console.log('Downloaded video size:', arrayBuffer.byteLength, 'bytes');
-  
-  return new Uint8Array(arrayBuffer);
+
+  throw lastError || new Error('All Invidious instances failed');
 }
 
 serve(async (req) => {
@@ -155,25 +216,46 @@ serve(async (req) => {
     }
     
     console.log('Extracted video ID:', videoId);
+    const fullUrl = `https://www.youtube.com/watch?v=${videoId}`;
+
+    let videoData: Uint8Array;
+    let title = 'youtube_video';
+
+    try {
+      console.log('Trying Cobalt API...');
+      const cobaltResult = await downloadWithCobalt(fullUrl);
+      videoData = cobaltResult.videoData;
+      title = cobaltResult.filename.replace(/\.[^/.]+$/, '') || 'youtube_video';
+    } catch (cobaltError) {
+      console.log('Cobalt failed, trying Invidious:', cobaltError);
+      
+      try {
+        const invidiousResult = await downloadWithInvidious(videoId);
+        videoData = invidiousResult.videoData;
+        title = invidiousResult.title;
+      } catch (invidiousError) {
+        console.error('All download methods failed');
+        throw new Error('Nem sikerült letölteni a videót. Próbáld újra később.');
+      }
+    }
+
+    console.log('Converting to base64...');
+    let base64Video = '';
+    const chunkSize = 32768;
+    for (let i = 0; i < videoData.length; i += chunkSize) {
+      const chunk = videoData.subarray(i, Math.min(i + chunkSize, videoData.length));
+      base64Video += String.fromCharCode.apply(null, Array.from(chunk));
+    }
+    base64Video = btoa(base64Video);
     
-    const { title, formats } = await getVideoInfo(videoId);
-    console.log('Found', formats.length, 'formats for video:', title);
-    
-    const selectedFormat = selectBestFormat(formats);
-    console.log('Selected format:', selectedFormat.qualityLabel, selectedFormat.mimeType);
-    
-    const videoData = await downloadVideo(selectedFormat);
-    
-    const base64Video = btoa(
-      videoData.reduce((data, byte) => data + String.fromCharCode(byte), '')
-    );
+    console.log('Sending response, title:', title);
     
     return new Response(
       JSON.stringify({
         success: true,
         title: title,
-        quality: selectedFormat.qualityLabel,
-        mimeType: selectedFormat.mimeType,
+        quality: '720p',
+        mimeType: 'video/mp4',
         videoBase64: base64Video,
         size: videoData.byteLength
       }),
