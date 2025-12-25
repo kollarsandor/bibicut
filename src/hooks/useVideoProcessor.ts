@@ -1,19 +1,29 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { FFmpeg } from '@ffmpeg/ffmpeg';
-import { fetchFile, toBlobURL } from '@ffmpeg/util';
+import { toBlobURL } from '@ffmpeg/util';
 import { supabase } from '@/lib/supabaseClient';
+import type { VideoChunk, ProcessingStatus, DownloadResult } from '@/types/video';
+import { VIDEO_PROCESSOR_CONFIG, FILE_CONFIG } from '@/constants/config';
+import { TRANSLATIONS } from '@/constants/translations';
 
-interface VideoChunk {
-  name: string;
-  startTime: number;
-  endTime: number;
-  blob: Blob;
+interface UseVideoProcessorReturn {
+  status: ProcessingStatus;
+  progress: number;
+  currentStep: string;
+  chunks: VideoChunk[];
+  totalChunks: number;
+  processedChunks: number;
+  processVideo: (file: File) => Promise<void>;
+  processYoutubeUrl: (url: string) => Promise<void>;
+  reset: () => void;
+  cancel: () => void;
 }
 
-type ProcessingStatus = 'idle' | 'loading' | 'processing' | 'complete' | 'error';
-
-export const useVideoProcessor = () => {
+export const useVideoProcessor = (): UseVideoProcessorReturn => {
   const ffmpegRef = useRef<FFmpeg | null>(null);
+  const cancelledRef = useRef<boolean>(false);
+  const blobUrlsRef = useRef<string[]>([]);
+
   const [isLoaded, setIsLoaded] = useState(false);
   const [status, setStatus] = useState<ProcessingStatus>('idle');
   const [progress, setProgress] = useState(0);
@@ -22,6 +32,19 @@ export const useVideoProcessor = () => {
   const [totalChunks, setTotalChunks] = useState(0);
   const [processedChunks, setProcessedChunks] = useState(0);
 
+  useEffect(() => {
+    return () => {
+      blobUrlsRef.current.forEach((url) => {
+        try {
+          URL.revokeObjectURL(url);
+        } catch (e) {
+          /* cleanup best effort */
+        }
+      });
+      blobUrlsRef.current = [];
+    };
+  }, []);
+
   const getFFmpeg = useCallback(() => {
     if (!ffmpegRef.current) {
       ffmpegRef.current = new FFmpeg();
@@ -29,31 +52,31 @@ export const useVideoProcessor = () => {
     return ffmpegRef.current;
   }, []);
 
-  const loadFFmpeg = useCallback(async () => {
+  const loadFFmpeg = useCallback(async (): Promise<boolean> => {
     if (isLoaded) return true;
-    
+
     try {
       setStatus('loading');
-      setCurrentStep('FFmpeg betöltése...');
-      setProgress(10);
-      
+      setCurrentStep(TRANSLATIONS.processing.loadingFfmpeg);
+      setProgress(VIDEO_PROCESSOR_CONFIG.PROGRESS.FFMPEG_LOADING);
+
       const ffmpeg = getFFmpeg();
-      const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
-      
+      const baseURL = VIDEO_PROCESSOR_CONFIG.FFMPEG_BASE_URL;
+
       const [coreURL, wasmURL] = await Promise.all([
         toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
         toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
       ]);
-      
+
       await ffmpeg.load({ coreURL, wasmURL });
-      
+
       setIsLoaded(true);
-      setProgress(30);
+      setProgress(VIDEO_PROCESSOR_CONFIG.PROGRESS.FFMPEG_LOADED);
       return true;
     } catch (error) {
       console.error('FFmpeg load error:', error);
       setStatus('error');
-      setCurrentStep('Hiba a FFmpeg betöltésekor');
+      setCurrentStep(TRANSLATIONS.processing.ffmpegLoadError);
       return false;
     }
   }, [isLoaded, getFFmpeg]);
@@ -62,171 +85,200 @@ export const useVideoProcessor = () => {
     return new Promise((resolve, reject) => {
       const video = document.createElement('video');
       const url = URL.createObjectURL(blob);
-      
+      blobUrlsRef.current.push(url);
+
       video.preload = 'metadata';
       video.src = url;
-      
-      video.onloadedmetadata = () => {
+
+      const cleanup = () => {
+        const index = blobUrlsRef.current.indexOf(url);
+        if (index > -1) {
+          blobUrlsRef.current.splice(index, 1);
+        }
         URL.revokeObjectURL(url);
+      };
+
+      video.onloadedmetadata = () => {
+        cleanup();
         resolve(video.duration);
       };
-      
+
       video.onerror = () => {
-        URL.revokeObjectURL(url);
-        reject(new Error('Nem sikerült a videó metaadatainak betöltése'));
+        cleanup();
+        reject(new Error(TRANSLATIONS.processing.metadataError));
       };
     });
   }, []);
 
-  const processVideoBlob = useCallback(async (blob: Blob, fileName: string) => {
-    const loaded = await loadFFmpeg();
-    if (!loaded) return;
+  const processVideoBlob = useCallback(
+    async (blob: Blob, fileName: string): Promise<void> => {
+      cancelledRef.current = false;
+      const loaded = await loadFFmpeg();
+      if (!loaded || cancelledRef.current) return;
 
-    const ffmpeg = getFFmpeg();
+      const ffmpeg = getFFmpeg();
 
-    try {
-      setStatus('processing');
-      setCurrentStep('Videó előkészítése...');
-      setProgress(35);
-      setChunks([]);
-      setProcessedChunks(0);
+      try {
+        setStatus('processing');
+        setCurrentStep(TRANSLATIONS.processing.preparingVideo);
+        setProgress(VIDEO_PROCESSOR_CONFIG.PROGRESS.VIDEO_PREPARING);
+        setChunks([]);
+        setProcessedChunks(0);
 
-      const [arrayBuffer, videoDuration] = await Promise.all([
-        blob.arrayBuffer(),
-        getVideoDuration(blob),
-      ]);
+        const [arrayBuffer, videoDuration] = await Promise.all([blob.arrayBuffer(), getVideoDuration(blob)]);
 
-      const extension = fileName.includes('.') ? fileName.substring(fileName.lastIndexOf('.')) : '.mp4';
-      const inputName = 'input' + extension;
-      
-      await ffmpeg.writeFile(inputName, new Uint8Array(arrayBuffer));
-      setProgress(40);
+        if (cancelledRef.current) return;
 
-      setCurrentStep('Videó hossza: ' + Math.floor(videoDuration / 60) + ' perc ' + Math.floor(videoDuration % 60) + ' mp');
+        const extension = fileName.includes('.') ? fileName.substring(fileName.lastIndexOf('.')) : FILE_CONFIG.DEFAULT_VIDEO_EXTENSION;
+        const inputName = 'input' + extension;
 
-      const chunkDuration = 60;
-      const numChunks = Math.ceil(videoDuration / chunkDuration);
-      setTotalChunks(numChunks);
-      setProgress(45);
+        await ffmpeg.writeFile(inputName, new Uint8Array(arrayBuffer));
+        setProgress(VIDEO_PROCESSOR_CONFIG.PROGRESS.VIDEO_PREPARED);
 
-      const newChunks: VideoChunk[] = [];
-      const batchSize = 3;
+        const minutes = Math.floor(videoDuration / 60);
+        const seconds = Math.floor(videoDuration % 60);
+        setCurrentStep(TRANSLATIONS.processing.videoDuration(minutes, seconds));
 
-      for (let batchStart = 0; batchStart < numChunks; batchStart += batchSize) {
-        const batchEnd = Math.min(batchStart + batchSize, numChunks);
-        const batchPromises: Promise<VideoChunk>[] = [];
+        const chunkDuration = VIDEO_PROCESSOR_CONFIG.CHUNK_DURATION_SECONDS;
+        const numChunks = Math.ceil(videoDuration / chunkDuration);
+        setTotalChunks(numChunks);
+        setProgress(VIDEO_PROCESSOR_CONFIG.PROGRESS.PROCESSING_START);
 
-        for (let i = batchStart; i < batchEnd; i++) {
-          const startTime = i * chunkDuration;
-          const endTime = Math.min((i + 1) * chunkDuration, videoDuration);
-          const outputName = `part_${String(i + 1).padStart(3, '0')}.mp4`;
-          const chunkIndex = i;
+        const newChunks: VideoChunk[] = [];
+        const batchSize = VIDEO_PROCESSOR_CONFIG.BATCH_SIZE;
 
-          const processChunk = async (): Promise<VideoChunk> => {
-            await ffmpeg.exec([
-              '-ss', startTime.toString(),
-              '-i', inputName,
-              '-t', chunkDuration.toString(),
-              '-c', 'copy',
-              '-avoid_negative_ts', 'make_zero',
-              '-movflags', '+faststart',
-              outputName
-            ]);
+        for (let batchStart = 0; batchStart < numChunks; batchStart += batchSize) {
+          if (cancelledRef.current) return;
 
-            const data = await ffmpeg.readFile(outputName);
-            const uint8Array = data instanceof Uint8Array ? data : new TextEncoder().encode(data as string);
-            const chunkBlob = new Blob([new Uint8Array(uint8Array)], { type: 'video/mp4' });
+          const batchEnd = Math.min(batchStart + batchSize, numChunks);
+          const batchPromises: Promise<VideoChunk>[] = [];
 
-            await ffmpeg.deleteFile(outputName);
+          for (let i = batchStart; i < batchEnd; i++) {
+            const startTime = i * chunkDuration;
+            const endTime = Math.min((i + 1) * chunkDuration, videoDuration);
+            const outputName = `part_${String(i + 1).padStart(VIDEO_PROCESSOR_CONFIG.PADDING_DIGITS, '0')}.mp4`;
 
-            return {
-              name: outputName,
-              startTime,
-              endTime,
-              blob: chunkBlob,
+            const processChunk = async (): Promise<VideoChunk> => {
+              await ffmpeg.exec([
+                '-ss',
+                startTime.toString(),
+                '-i',
+                inputName,
+                '-t',
+                chunkDuration.toString(),
+                '-c',
+                'copy',
+                '-avoid_negative_ts',
+                'make_zero',
+                '-movflags',
+                '+faststart',
+                outputName,
+              ]);
+
+              const data = await ffmpeg.readFile(outputName);
+              const uint8Array = data instanceof Uint8Array ? data : new TextEncoder().encode(data as string);
+              const chunkBlob = new Blob([new Uint8Array(uint8Array)], { type: FILE_CONFIG.DEFAULT_MIME_TYPE });
+
+              await ffmpeg.deleteFile(outputName);
+
+              return {
+                name: outputName,
+                startTime,
+                endTime,
+                blob: chunkBlob,
+              };
             };
-          };
 
-          batchPromises.push(processChunk());
+            batchPromises.push(processChunk());
+          }
+
+          setCurrentStep(TRANSLATIONS.processing.processingChunks(batchStart + 1, batchEnd, numChunks));
+
+          const batchResults = await Promise.all(batchPromises);
+          newChunks.push(...batchResults);
+
+          setProcessedChunks(batchEnd);
+          const progressValue =
+            VIDEO_PROCESSOR_CONFIG.PROGRESS.PROCESSING_START +
+            (batchEnd / numChunks) * VIDEO_PROCESSOR_CONFIG.PROGRESS.PROCESSING_RANGE;
+          setProgress(progressValue);
         }
 
-        setCurrentStep(`Részletek ${batchStart + 1}-${batchEnd}/${numChunks} feldolgozása...`);
+        await ffmpeg.deleteFile(inputName);
 
-        const batchResults = await Promise.all(batchPromises);
-        newChunks.push(...batchResults);
+        newChunks.sort((a, b) => a.startTime - b.startTime);
 
-        setProcessedChunks(batchEnd);
-        setProgress(45 + (batchEnd / numChunks) * 50);
+        setChunks(newChunks);
+        setStatus('complete');
+        setCurrentStep(TRANSLATIONS.processing.allChunksComplete);
+        setProgress(VIDEO_PROCESSOR_CONFIG.PROGRESS.COMPLETE);
+      } catch (error) {
+        console.error('Processing error:', error);
+        setStatus('error');
+        const errorMessage = error instanceof Error ? error.message : TRANSLATIONS.processing.processingError;
+        setCurrentStep(errorMessage);
       }
+    },
+    [loadFFmpeg, getFFmpeg, getVideoDuration]
+  );
 
-      await ffmpeg.deleteFile(inputName);
+  const processVideo = useCallback(
+    async (file: File): Promise<void> => {
+      await processVideoBlob(file, file.name);
+    },
+    [processVideoBlob]
+  );
 
-      newChunks.sort((a, b) => a.startTime - b.startTime);
+  const processYoutubeUrl = useCallback(
+    async (url: string): Promise<void> => {
+      cancelledRef.current = false;
 
-      setChunks(newChunks);
-      setStatus('complete');
-      setCurrentStep('Minden részlet elkészült!');
-      setProgress(100);
-    } catch (error) {
-      console.error('Processing error:', error);
-      setStatus('error');
-      const errorMessage = error instanceof Error ? error.message : 'Hiba a feldolgozás során';
-      setCurrentStep(errorMessage);
-    }
-  }, [loadFFmpeg, getFFmpeg, getVideoDuration]);
+      try {
+        setStatus('loading');
+        setCurrentStep(TRANSLATIONS.youtube.downloading);
+        setProgress(VIDEO_PROCESSOR_CONFIG.PROGRESS.YOUTUBE_START);
 
-  const processVideo = useCallback(async (file: File) => {
-    await processVideoBlob(file, file.name);
-  }, [processVideoBlob]);
+        const { data, error } = await supabase.functions.invoke<DownloadResult>('youtube-download', {
+          body: { url },
+        });
 
-  const processYoutubeUrl = useCallback(async (url: string) => {
-    try {
-      setStatus('loading');
-      setCurrentStep('YouTube videó letöltése...');
-      setProgress(5);
+        if (cancelledRef.current) return;
 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 120000);
+        if (error) {
+          console.error('Supabase function error:', error);
+          throw new Error(error.message || TRANSLATIONS.youtube.downloadError);
+        }
 
-      const { data, error } = await supabase.functions.invoke('youtube-download', {
-        body: { url }
-      });
+        if (!data || !data.success) {
+          throw new Error(data?.error || TRANSLATIONS.youtube.downloadFailed);
+        }
 
-      clearTimeout(timeoutId);
+        setCurrentStep(TRANSLATIONS.youtube.decoding);
+        setProgress(VIDEO_PROCESSOR_CONFIG.PROGRESS.YOUTUBE_DECODING);
 
-      if (error) {
-        console.error('Supabase function error:', error);
-        throw new Error(error.message || 'Hiba a YouTube videó letöltésekor');
+        const binaryString = atob(data.videoBase64);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+
+        const videoBlob = new Blob([bytes], { type: data.mimeType || FILE_CONFIG.DEFAULT_MIME_TYPE });
+        const fileName = `${data.title || 'youtube_video'}.mp4`;
+
+        setProgress(VIDEO_PROCESSOR_CONFIG.PROGRESS.YOUTUBE_DECODED);
+        await processVideoBlob(videoBlob, fileName);
+      } catch (error) {
+        console.error('YouTube processing error:', error);
+        setStatus('error');
+        const errorMessage = error instanceof Error ? error.message : TRANSLATIONS.youtube.processingError;
+        setCurrentStep(errorMessage);
       }
+    },
+    [processVideoBlob]
+  );
 
-      if (!data.success) {
-        throw new Error(data.error || 'Nem sikerült letölteni a YouTube videót');
-      }
-
-      setCurrentStep('Videó dekódolása...');
-      setProgress(25);
-
-      const binaryString = atob(data.videoBase64);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-
-      const videoBlob = new Blob([bytes], { type: data.mimeType || 'video/mp4' });
-      const fileName = `${data.title || 'youtube_video'}.mp4`;
-
-      setProgress(30);
-      await processVideoBlob(videoBlob, fileName);
-
-    } catch (error) {
-      console.error('YouTube processing error:', error);
-      setStatus('error');
-      const errorMessage = error instanceof Error ? error.message : 'Hiba a YouTube videó feldolgozásakor';
-      setCurrentStep(errorMessage);
-    }
-  }, [processVideoBlob]);
-
-  const reset = useCallback(() => {
+  const reset = useCallback((): void => {
+    cancelledRef.current = true;
     setStatus('idle');
     setProgress(0);
     setCurrentStep('');
@@ -234,6 +286,11 @@ export const useVideoProcessor = () => {
     setTotalChunks(0);
     setProcessedChunks(0);
   }, []);
+
+  const cancel = useCallback((): void => {
+    cancelledRef.current = true;
+    reset();
+  }, [reset]);
 
   return {
     status,
@@ -245,5 +302,6 @@ export const useVideoProcessor = () => {
     processVideo,
     processYoutubeUrl,
     reset,
+    cancel,
   };
 };
