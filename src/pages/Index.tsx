@@ -26,6 +26,7 @@ const Index = () => {
     totalChunks,
     processedChunks,
     processVideo,
+    processYoutubeUrl,
     reset,
   } = useVideoProcessor();
 
@@ -37,12 +38,12 @@ const Index = () => {
     await processVideo(file);
   };
 
-  const handleYoutubeUrl = (url: string) => {
+  const handleYoutubeUrl = async (url: string) => {
     toast({
-      title: "YouTube támogatás",
-      description: "A YouTube letöltés hamarosan elérhető lesz. Egyelőre kérlek töltsd le a videót, majd töltsd fel ide.",
-      variant: "destructive",
+      title: "YouTube videó feldolgozása",
+      description: "Videó letöltése és darabolása folyamatban...",
     });
+    await processYoutubeUrl(url);
   };
 
   const handleDownloadAll = async () => {
@@ -93,7 +94,6 @@ const Index = () => {
 
   return (
     <div className="min-h-screen py-12 px-4 sm:px-6 lg:px-8">
-      {/* Header */}
       <header className="text-center mb-12">
         <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl gradient-accent mb-6 glow-strong animate-float">
           <Scissors className="w-10 h-10 text-primary-foreground" />
@@ -108,12 +108,11 @@ const Index = () => {
           <br />
           <span className="inline-flex items-center gap-1 text-sm mt-2">
             <Sparkles className="w-4 h-4 text-primary" />
-            Teljesen a böngésződben fut, nem töltünk fel semmit
+            YouTube linkkel is működik!
           </span>
         </p>
       </header>
 
-      {/* Main Content */}
       <main className="space-y-8">
         {status === 'idle' && (
           <UploadZone
@@ -168,10 +167,9 @@ const Index = () => {
         )}
       </main>
 
-      {/* Footer */}
       <footer className="mt-16 text-center text-sm text-muted-foreground">
-        <p>Minden feldolgozás helyben, a böngésződben történik.</p>
-        <p className="mt-1">A videóid nem kerülnek fel semmilyen szerverre.</p>
+        <p>A fájl feltöltés a böngésződben történik, a YouTube letöltés szerveren keresztül.</p>
+        <p className="mt-1">A videóid biztonságban vannak.</p>
       </footer>
     </div>
   );

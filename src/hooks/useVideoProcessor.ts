@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
+import { supabase } from '@/lib/supabaseClient';
 
 interface VideoChunk {
   name: string;
@@ -47,7 +48,7 @@ export const useVideoProcessor = () => {
     }
   }, [ffmpeg, isLoaded]);
 
-  const processVideo = useCallback(async (file: File) => {
+  const processVideoBlob = useCallback(async (blob: Blob, fileName: string) => {
     const loaded = await loadFFmpeg();
     if (!loaded) return;
 
@@ -58,26 +59,30 @@ export const useVideoProcessor = () => {
       setChunks([]);
       setProcessedChunks(0);
 
-      // Write input file
-      const inputName = 'input' + file.name.substring(file.name.lastIndexOf('.'));
-      await ffmpeg.writeFile(inputName, await fetchFile(file));
+      const extension = fileName.includes('.') ? fileName.substring(fileName.lastIndexOf('.')) : '.mp4';
+      const inputName = 'input' + extension;
+      
+      const arrayBuffer = await blob.arrayBuffer();
+      await ffmpeg.writeFile(inputName, new Uint8Array(arrayBuffer));
       setProgress(40);
 
-      // Get video duration
       setCurrentStep('Videó hosszának megállapítása...');
       
-      // Create a video element to get duration
-      const videoUrl = URL.createObjectURL(file);
-      const videoDuration = await new Promise<number>((resolve) => {
+      const videoUrl = URL.createObjectURL(blob);
+      const videoDuration = await new Promise<number>((resolve, reject) => {
         const video = document.createElement('video');
         video.src = videoUrl;
         video.onloadedmetadata = () => {
           resolve(video.duration);
           URL.revokeObjectURL(videoUrl);
         };
+        video.onerror = () => {
+          URL.revokeObjectURL(videoUrl);
+          reject(new Error('Nem sikerült a videó metaadatainak betöltése'));
+        };
       });
 
-      const chunkDuration = 60; // 1 minute in seconds
+      const chunkDuration = 60;
       const numChunks = Math.ceil(videoDuration / chunkDuration);
       setTotalChunks(numChunks);
       setProgress(45);
@@ -102,24 +107,22 @@ export const useVideoProcessor = () => {
 
         const data = await ffmpeg.readFile(outputName);
         const uint8Array = data instanceof Uint8Array ? data : new TextEncoder().encode(data as string);
-        const arrayBuffer = uint8Array.slice().buffer as ArrayBuffer;
-        const blob = new Blob([arrayBuffer], { type: 'video/mp4' });
+        const chunkArrayBuffer = uint8Array.slice().buffer as ArrayBuffer;
+        const chunkBlob = new Blob([chunkArrayBuffer], { type: 'video/mp4' });
 
         newChunks.push({
           name: outputName,
           startTime,
           endTime,
-          blob,
+          blob: chunkBlob,
         });
 
         setProcessedChunks(i + 1);
         setProgress(45 + ((i + 1) / numChunks) * 50);
 
-        // Clean up chunk file
         await ffmpeg.deleteFile(outputName);
       }
 
-      // Clean up input file
       await ffmpeg.deleteFile(inputName);
 
       setChunks(newChunks);
@@ -132,6 +135,52 @@ export const useVideoProcessor = () => {
       setCurrentStep('Hiba a feldolgozás során');
     }
   }, [ffmpeg, loadFFmpeg]);
+
+  const processVideo = useCallback(async (file: File) => {
+    await processVideoBlob(file, file.name);
+  }, [processVideoBlob]);
+
+  const processYoutubeUrl = useCallback(async (url: string) => {
+    try {
+      setStatus('loading');
+      setCurrentStep('YouTube videó letöltése...');
+      setProgress(5);
+
+      const { data, error } = await supabase.functions.invoke('youtube-download', {
+        body: { url }
+      });
+
+      if (error) {
+        console.error('Supabase function error:', error);
+        throw new Error(error.message || 'Hiba a YouTube videó letöltésekor');
+      }
+
+      if (!data.success) {
+        throw new Error(data.error || 'Nem sikerült letölteni a YouTube videót');
+      }
+
+      setCurrentStep('Videó dekódolása...');
+      setProgress(25);
+
+      const binaryString = atob(data.videoBase64);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+
+      const videoBlob = new Blob([bytes], { type: data.mimeType || 'video/mp4' });
+      const fileName = `${data.title || 'youtube_video'}.mp4`;
+
+      setProgress(30);
+      await processVideoBlob(videoBlob, fileName);
+
+    } catch (error) {
+      console.error('YouTube processing error:', error);
+      setStatus('error');
+      const errorMessage = error instanceof Error ? error.message : 'Hiba a YouTube videó feldolgozásakor';
+      setCurrentStep(errorMessage);
+    }
+  }, [processVideoBlob]);
 
   const reset = useCallback(() => {
     setStatus('idle');
@@ -150,6 +199,7 @@ export const useVideoProcessor = () => {
     totalChunks,
     processedChunks,
     processVideo,
+    processYoutubeUrl,
     reset,
   };
 };
