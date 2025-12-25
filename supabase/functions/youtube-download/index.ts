@@ -21,10 +21,10 @@ function extractVideoId(url: string): string | null {
   return null;
 }
 
-async function downloadWithCobalt(url: string): Promise<{videoData: Uint8Array, filename: string}> {
-  console.log('Requesting download from Cobalt API...');
+async function downloadWithCobaltV10(url: string): Promise<{videoData: Uint8Array, filename: string}> {
+  console.log('Requesting download from Cobalt v10 API...');
   
-  const cobaltResponse = await fetch('https://api.cobalt.tools/api/json', {
+  const cobaltResponse = await fetch('https://api.cobalt.tools/', {
     method: 'POST',
     headers: {
       'Accept': 'application/json',
@@ -32,31 +32,28 @@ async function downloadWithCobalt(url: string): Promise<{videoData: Uint8Array, 
     },
     body: JSON.stringify({
       url: url,
-      vCodec: 'h264',
-      vQuality: '720',
-      aFormat: 'mp3',
-      filenamePattern: 'basic',
-      isAudioOnly: false,
-      disableMetadata: false,
+      videoQuality: '720',
+      filenameStyle: 'basic',
+      downloadMode: 'auto',
     })
   });
 
   if (!cobaltResponse.ok) {
     const errorText = await cobaltResponse.text();
-    console.error('Cobalt API error:', errorText);
+    console.error('Cobalt v10 API error:', cobaltResponse.status, errorText);
     throw new Error(`Cobalt API error: ${cobaltResponse.status}`);
   }
 
   const cobaltData = await cobaltResponse.json();
-  console.log('Cobalt response:', JSON.stringify(cobaltData));
+  console.log('Cobalt v10 response status:', cobaltData.status);
 
   if (cobaltData.status === 'error') {
-    throw new Error(cobaltData.text || 'Failed to process video');
+    throw new Error(cobaltData.error?.code || 'Failed to process video');
   }
 
-  if (cobaltData.status === 'redirect' || cobaltData.status === 'stream') {
+  if (cobaltData.status === 'tunnel' || cobaltData.status === 'redirect') {
     const downloadUrl = cobaltData.url;
-    console.log('Downloading from:', downloadUrl);
+    console.log('Downloading video...');
 
     const videoResponse = await fetch(downloadUrl, {
       headers: {
@@ -72,7 +69,7 @@ async function downloadWithCobalt(url: string): Promise<{videoData: Uint8Array, 
     const videoData = new Uint8Array(arrayBuffer);
     
     const contentDisposition = videoResponse.headers.get('content-disposition');
-    let filename = 'video.mp4';
+    let filename = cobaltData.filename || 'video.mp4';
     if (contentDisposition) {
       const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
       if (filenameMatch && filenameMatch[1]) {
@@ -87,7 +84,7 @@ async function downloadWithCobalt(url: string): Promise<{videoData: Uint8Array, 
   if (cobaltData.status === 'picker') {
     const videoItem = cobaltData.picker?.find((item: any) => item.type === 'video') || cobaltData.picker?.[0];
     if (videoItem && videoItem.url) {
-      console.log('Downloading from picker:', videoItem.url);
+      console.log('Downloading from picker...');
       
       const videoResponse = await fetch(videoItem.url, {
         headers: {
@@ -104,15 +101,16 @@ async function downloadWithCobalt(url: string): Promise<{videoData: Uint8Array, 
     }
   }
 
-  throw new Error('Unexpected response from download service');
+  throw new Error('Unexpected response from download service: ' + cobaltData.status);
 }
 
 async function downloadWithInvidious(videoId: string): Promise<{videoData: Uint8Array, title: string}> {
   const instances = [
-    'https://invidious.snopyta.org',
-    'https://yewtu.be',
-    'https://inv.riverside.rocks',
-    'https://invidious.kavin.rocks',
+    'https://vid.puffyan.us',
+    'https://inv.tux.pizza',
+    'https://invidious.privacyredirect.com',
+    'https://iv.nboeck.de',
+    'https://invidious.protokolla.fi',
   ];
 
   let lastError: Error | null = null;
@@ -121,14 +119,27 @@ async function downloadWithInvidious(videoId: string): Promise<{videoData: Uint8
     try {
       console.log(`Trying Invidious instance: ${instance}`);
       
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      
       const infoResponse = await fetch(`${instance}/api/v1/videos/${videoId}`, {
         headers: {
           'Accept': 'application/json',
-        }
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        },
+        signal: controller.signal,
       });
+      
+      clearTimeout(timeoutId);
 
       if (!infoResponse.ok) {
         console.log(`Instance ${instance} returned ${infoResponse.status}`);
+        continue;
+      }
+
+      const contentType = infoResponse.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        console.log(`Instance ${instance} returned non-JSON response`);
         continue;
       }
 
@@ -136,37 +147,34 @@ async function downloadWithInvidious(videoId: string): Promise<{videoData: Uint8
       console.log('Video title:', videoInfo.title);
 
       const formatStreams = videoInfo.formatStreams || [];
-      const adaptiveFormats = videoInfo.adaptiveFormats || [];
       
       let selectedFormat = formatStreams.find((f: any) => 
-        f.container === 'mp4' && f.qualityLabel && parseInt(f.qualityLabel) <= 720
+        f.container === 'mp4' && f.qualityLabel
       );
 
       if (!selectedFormat && formatStreams.length > 0) {
         selectedFormat = formatStreams[0];
       }
 
-      if (!selectedFormat) {
-        const mp4Formats = adaptiveFormats.filter((f: any) => 
-          f.container === 'mp4' && f.type?.includes('video')
-        );
-        if (mp4Formats.length > 0) {
-          selectedFormat = mp4Formats[0];
-        }
-      }
-
-      if (!selectedFormat) {
+      if (!selectedFormat || !selectedFormat.url) {
         console.log('No suitable format found on this instance');
         continue;
       }
 
-      console.log('Selected format:', selectedFormat.qualityLabel || 'adaptive');
+      console.log('Selected format:', selectedFormat.qualityLabel);
+
+      const videoController = new AbortController();
+      const videoTimeoutId = setTimeout(() => videoController.abort(), 60000);
 
       const videoResponse = await fetch(selectedFormat.url, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        }
+          'Referer': instance,
+        },
+        signal: videoController.signal,
       });
+
+      clearTimeout(videoTimeoutId);
 
       if (!videoResponse.ok) {
         console.log(`Failed to download: ${videoResponse.status}`);
@@ -176,18 +184,123 @@ async function downloadWithInvidious(videoId: string): Promise<{videoData: Uint8
       const arrayBuffer = await videoResponse.arrayBuffer();
       console.log('Downloaded:', arrayBuffer.byteLength, 'bytes');
 
+      if (arrayBuffer.byteLength < 10000) {
+        console.log('Downloaded file too small, skipping');
+        continue;
+      }
+
       return {
         videoData: new Uint8Array(arrayBuffer),
         title: videoInfo.title || 'video'
       };
 
     } catch (err) {
-      console.log(`Instance ${instance} failed:`, err);
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      console.log(`Instance ${instance} failed:`, errorMsg);
       lastError = err instanceof Error ? err : new Error(String(err));
     }
   }
 
   throw lastError || new Error('All Invidious instances failed');
+}
+
+async function downloadWithPipedAPI(videoId: string): Promise<{videoData: Uint8Array, title: string}> {
+  const instances = [
+    'https://pipedapi.kavin.rocks',
+    'https://api.piped.yt',
+    'https://pipedapi.in.projectsegfau.lt',
+    'https://pipedapi.darkness.services',
+  ];
+
+  let lastError: Error | null = null;
+
+  for (const instance of instances) {
+    try {
+      console.log(`Trying Piped instance: ${instance}`);
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+      const infoResponse = await fetch(`${instance}/streams/${videoId}`, {
+        headers: {
+          'Accept': 'application/json',
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!infoResponse.ok) {
+        console.log(`Piped instance ${instance} returned ${infoResponse.status}`);
+        continue;
+      }
+
+      const videoInfo = await infoResponse.json();
+      console.log('Piped video title:', videoInfo.title);
+
+      const videoStreams = videoInfo.videoStreams || [];
+      
+      let selectedStream = videoStreams.find((s: any) => 
+        s.mimeType?.includes('video/mp4') && 
+        s.videoOnly === false &&
+        parseInt(s.quality) <= 720
+      );
+
+      if (!selectedStream) {
+        selectedStream = videoStreams.find((s: any) => 
+          s.mimeType?.includes('video/mp4') && s.videoOnly === false
+        );
+      }
+
+      if (!selectedStream) {
+        selectedStream = videoStreams.find((s: any) => s.videoOnly === false);
+      }
+
+      if (!selectedStream || !selectedStream.url) {
+        console.log('No suitable stream found');
+        continue;
+      }
+
+      console.log('Selected quality:', selectedStream.quality);
+
+      const videoController = new AbortController();
+      const videoTimeoutId = setTimeout(() => videoController.abort(), 60000);
+
+      const videoResponse = await fetch(selectedStream.url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        },
+        signal: videoController.signal,
+      });
+
+      clearTimeout(videoTimeoutId);
+
+      if (!videoResponse.ok) {
+        console.log(`Failed to download from Piped: ${videoResponse.status}`);
+        continue;
+      }
+
+      const arrayBuffer = await videoResponse.arrayBuffer();
+      console.log('Piped downloaded:', arrayBuffer.byteLength, 'bytes');
+
+      if (arrayBuffer.byteLength < 10000) {
+        console.log('Downloaded file too small');
+        continue;
+      }
+
+      return {
+        videoData: new Uint8Array(arrayBuffer),
+        title: videoInfo.title || 'video'
+      };
+
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      console.log(`Piped instance ${instance} failed:`, errorMsg);
+      lastError = err instanceof Error ? err : new Error(String(err));
+    }
+  }
+
+  throw lastError || new Error('All Piped instances failed');
 }
 
 serve(async (req) => {
@@ -222,24 +335,34 @@ serve(async (req) => {
     let title = 'youtube_video';
 
     try {
-      console.log('Trying Cobalt API...');
-      const cobaltResult = await downloadWithCobalt(fullUrl);
+      console.log('Trying Cobalt v10 API...');
+      const cobaltResult = await downloadWithCobaltV10(fullUrl);
       videoData = cobaltResult.videoData;
       title = cobaltResult.filename.replace(/\.[^/.]+$/, '') || 'youtube_video';
     } catch (cobaltError) {
-      console.log('Cobalt failed, trying Invidious:', cobaltError);
+      console.log('Cobalt failed:', cobaltError instanceof Error ? cobaltError.message : String(cobaltError));
       
       try {
-        const invidiousResult = await downloadWithInvidious(videoId);
-        videoData = invidiousResult.videoData;
-        title = invidiousResult.title;
-      } catch (invidiousError) {
-        console.error('All download methods failed');
-        throw new Error('Nem sikerült letölteni a videót. Próbáld újra később.');
+        console.log('Trying Piped API...');
+        const pipedResult = await downloadWithPipedAPI(videoId);
+        videoData = pipedResult.videoData;
+        title = pipedResult.title;
+      } catch (pipedError) {
+        console.log('Piped failed:', pipedError instanceof Error ? pipedError.message : String(pipedError));
+        
+        try {
+          console.log('Trying Invidious API...');
+          const invidiousResult = await downloadWithInvidious(videoId);
+          videoData = invidiousResult.videoData;
+          title = invidiousResult.title;
+        } catch (invidiousError) {
+          console.error('All download methods failed');
+          throw new Error('Nem sikerült letölteni a videót. A YouTube videók letöltése jelenleg nem elérhető. Kérlek töltsd le a videót manuálisan és használd a fájl feltöltést.');
+        }
       }
     }
 
-    console.log('Converting to base64...');
+    console.log('Converting to base64, size:', videoData.byteLength);
     let base64Video = '';
     const chunkSize = 32768;
     for (let i = 0; i < videoData.length; i += chunkSize) {
@@ -248,7 +371,7 @@ serve(async (req) => {
     }
     base64Video = btoa(base64Video);
     
-    console.log('Sending response, title:', title);
+    console.log('Success! Title:', title);
     
     return new Response(
       JSON.stringify({
