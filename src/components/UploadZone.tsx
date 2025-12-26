@@ -102,20 +102,38 @@ export const UploadZone = ({ onFileSelect, onYoutubeUrl, isProcessing }: UploadZ
   }, []);
 
   return (
-    <div className="w-full max-w-2xl mx-auto">
-      <div className="flex gap-2 mb-6 justify-center" role="tablist" aria-label="Feltöltési mód">
-        <Button variant={mode === 'upload' ? 'default' : 'outline'} onClick={() => handleModeChange('upload')} disabled={isProcessing} role="tab" aria-selected={mode === 'upload'} aria-controls="upload-panel">
+    <div className="w-full max-w-2xl mx-auto animate-fade-in">
+      <div className="flex gap-3 mb-8 justify-center" role="tablist" aria-label="Feltöltési mód">
+        <Button 
+          variant={mode === 'upload' ? 'default' : 'glass'} 
+          size="lg"
+          onClick={() => handleModeChange('upload')} 
+          disabled={isProcessing} 
+          role="tab" 
+          aria-selected={mode === 'upload'} 
+          aria-controls="upload-panel"
+          className="apple-hover"
+        >
           <Upload className="w-4 h-4 mr-2" aria-hidden="true" />
           {TRANSLATIONS.upload.fileUpload}
         </Button>
-        <Button variant={mode === 'youtube' ? 'default' : 'outline'} onClick={() => handleModeChange('youtube')} disabled={isProcessing} role="tab" aria-selected={mode === 'youtube'} aria-controls="youtube-panel">
+        <Button 
+          variant={mode === 'youtube' ? 'default' : 'glass'} 
+          size="lg"
+          onClick={() => handleModeChange('youtube')} 
+          disabled={isProcessing} 
+          role="tab" 
+          aria-selected={mode === 'youtube'} 
+          aria-controls="youtube-panel"
+          className="apple-hover"
+        >
           <Link2 className="w-4 h-4 mr-2" aria-hidden="true" />
           {TRANSLATIONS.upload.youtubeLink}
         </Button>
       </div>
 
       {error && (
-        <div className="mb-4 p-3 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive text-sm text-center" role="alert">
+        <div className="mb-6 p-4 rounded-2xl bg-destructive/10 border border-destructive/20 text-destructive text-sm text-center animate-fade-in" role="alert">
           {error}
         </div>
       )}
@@ -129,35 +147,35 @@ export const UploadZone = ({ onFileSelect, onYoutubeUrl, isProcessing }: UploadZ
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           className={cn(
-            'relative border-2 border-dashed rounded-2xl p-12 transition-all duration-300 cursor-pointer group',
-            isDragging ? 'border-primary bg-primary/10 glow-strong' : 'border-border hover:border-primary/50 hover:bg-secondary/50',
+            'relative border-2 border-dashed rounded-3xl p-16 transition-all duration-300 cursor-pointer group glass',
+            isDragging ? 'border-primary bg-primary/5 glow-strong' : 'border-border hover:border-muted-foreground/30 hover:bg-secondary/20',
             isProcessing && 'opacity-50 pointer-events-none'
           )}
         >
           <input type="file" accept="video/mp4,video/webm,video/quicktime,video/x-msvideo,.mp4,.mov,.avi,.webm" onChange={handleFileInput} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" disabled={isProcessing} aria-label={TRANSLATIONS.accessibility.fileInput} />
 
-          <div className="flex flex-col items-center gap-4 text-center">
-            <div className={cn('w-20 h-20 rounded-2xl gradient-card flex items-center justify-center transition-all duration-300', isDragging ? 'glow-strong scale-110' : 'group-hover:glow-primary')}>
-              <Film className="w-10 h-10 text-primary" aria-hidden="true" />
+          <div className="flex flex-col items-center gap-6 text-center">
+            <div className={cn('w-24 h-24 rounded-3xl glass glass-border flex items-center justify-center transition-all duration-300', isDragging ? 'glow-strong scale-110' : 'group-hover:glow-primary group-hover:scale-105')}>
+              <Film className="w-12 h-12 text-primary" aria-hidden="true" />
             </div>
 
             <div>
-              <p className="text-lg font-medium text-foreground mb-1">{TRANSLATIONS.upload.dragHere}</p>
-              <p className="text-sm text-muted-foreground">{TRANSLATIONS.upload.orClickToBrowse}</p>
+              <p className="text-xl font-semibold text-foreground mb-2">{TRANSLATIONS.upload.dragHere}</p>
+              <p className="text-muted-foreground">{TRANSLATIONS.upload.orClickToBrowse}</p>
             </div>
 
-            <p className="text-xs text-muted-foreground">{TRANSLATIONS.upload.supportedFormats}</p>
+            <p className="text-xs text-muted-foreground/60 px-4 py-2 rounded-full bg-secondary/30">{TRANSLATIONS.upload.supportedFormats}</p>
           </div>
         </div>
       ) : (
-        <div id="youtube-panel" role="tabpanel" aria-labelledby="youtube-tab" className="gradient-card rounded-2xl p-8 border border-border">
-          <div className="flex flex-col gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-destructive/20 flex items-center justify-center">
-                <Link2 className="w-6 h-6 text-destructive" aria-hidden="true" />
+        <div id="youtube-panel" role="tabpanel" aria-labelledby="youtube-tab" className="glass glass-border apple-shadow rounded-3xl p-10">
+          <div className="flex flex-col gap-6">
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 rounded-2xl bg-destructive/15 flex items-center justify-center">
+                <Link2 className="w-7 h-7 text-destructive" aria-hidden="true" />
               </div>
               <div>
-                <p className="font-medium text-foreground">{TRANSLATIONS.upload.youtubeVideo}</p>
+                <p className="font-semibold text-foreground text-lg">{TRANSLATIONS.upload.youtubeVideo}</p>
                 <p className="text-sm text-muted-foreground">{TRANSLATIONS.upload.pasteLink}</p>
               </div>
             </div>
@@ -170,13 +188,13 @@ export const UploadZone = ({ onFileSelect, onYoutubeUrl, isProcessing }: UploadZ
                 setError(null);
               }}
               placeholder="https://www.youtube.com/watch?v=..."
-              className="w-full h-12 px-4 rounded-lg bg-secondary border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary font-mono text-sm"
+              className="w-full h-14 px-5 rounded-2xl bg-secondary/50 border border-border text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 font-mono text-sm transition-all duration-300"
               disabled={isProcessing}
               aria-label={TRANSLATIONS.accessibility.youtubeInput}
               aria-invalid={error ? 'true' : 'false'}
             />
 
-            <Button variant="glow" size="lg" onClick={handleYoutubeSubmit} disabled={!youtubeUrl.trim() || isProcessing || !isValidYoutubeUrl} className="w-full">
+            <Button variant="glow" size="xl" onClick={handleYoutubeSubmit} disabled={!youtubeUrl.trim() || isProcessing || !isValidYoutubeUrl} className="w-full">
               {TRANSLATIONS.upload.processVideo}
             </Button>
           </div>

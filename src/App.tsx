@@ -39,16 +39,16 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
       }
       return (
         <div className="min-h-screen flex items-center justify-center bg-background">
-          <div className="text-center p-8 max-w-md">
+          <div className="text-center p-10 max-w-md glass glass-border apple-shadow rounded-3xl">
             <h1 className="text-2xl font-bold text-foreground mb-4">
               Hiba történt
             </h1>
-            <p className="text-muted-foreground mb-6">
+            <p className="text-muted-foreground mb-8">
               Az alkalmazás váratlan hibába ütközött. Kérjük, frissítsd az oldalt.
             </p>
             <button
               onClick={() => window.location.reload()}
-              className="px-6 py-3 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors"
+              className="px-8 py-4 bg-primary text-primary-foreground rounded-2xl font-semibold hover:bg-primary/90 transition-all duration-300 active:scale-[0.97] apple-shadow-sm"
             >
               Oldal frissítése
             </button>
@@ -64,9 +64,9 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
 function LoadingFallback(): JSX.Element {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
-      <div className="flex flex-col items-center gap-4">
-        <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-        <p className="text-muted-foreground">Betöltés...</p>
+      <div className="flex flex-col items-center gap-6">
+        <div className="w-14 h-14 border-3 border-primary border-t-transparent rounded-full animate-spin" />
+        <p className="text-muted-foreground text-lg">Betöltés...</p>
       </div>
     </div>
   );
