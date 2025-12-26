@@ -2,6 +2,8 @@ type Subscriber = () => void;
 
 let currentSubscriber: Subscriber | null = null;
 const subscriberStack: Subscriber[] = [];
+let batchDepth = 0;
+const pendingEffects: Set<Subscriber> = new Set();
 
 export function createSignal<T>(initialValue: T): [() => T, (newValue: T | ((prev: T) => T)) => void] {
   let value = initialValue;
@@ -21,9 +23,13 @@ export function createSignal<T>(initialValue: T): [() => T, (newValue: T | ((pre
     
     if (!Object.is(value, nextValue)) {
       value = nextValue;
-      const currentSubs = Array.from(subscribers);
-      for (let i = 0; i < currentSubs.length; i++) {
-        currentSubs[i]();
+      if (batchDepth > 0) {
+        subscribers.forEach(sub => pendingEffects.add(sub));
+      } else {
+        const currentSubs = Array.from(subscribers);
+        for (let i = 0; i < currentSubs.length; i++) {
+          currentSubs[i]();
+        }
       }
     }
   };
@@ -33,8 +39,10 @@ export function createSignal<T>(initialValue: T): [() => T, (newValue: T | ((pre
 
 export function createEffect(fn: () => void | (() => void)): () => void {
   let cleanup: (() => void) | void;
+  let isDisposed = false;
   
   const execute = (): void => {
+    if (isDisposed) return;
     if (cleanup) {
       cleanup();
     }
@@ -51,6 +59,7 @@ export function createEffect(fn: () => void | (() => void)): () => void {
   execute();
   
   return () => {
+    isDisposed = true;
     if (cleanup) {
       cleanup();
     }
@@ -73,12 +82,18 @@ export function createMemo<T>(fn: () => T): () => T {
 }
 
 export function batch(fn: () => void): void {
-  const prevSubscriber = currentSubscriber;
-  currentSubscriber = null;
+  batchDepth++;
   try {
     fn();
   } finally {
-    currentSubscriber = prevSubscriber;
+    batchDepth--;
+    if (batchDepth === 0) {
+      const effects = Array.from(pendingEffects);
+      pendingEffects.clear();
+      for (let i = 0; i < effects.length; i++) {
+        effects[i]();
+      }
+    }
   }
 }
 
@@ -97,6 +112,7 @@ export interface SignalStore<T extends Record<string, unknown>> {
   set: <K extends keyof T>(key: K, value: T[K]) => void;
   update: <K extends keyof T>(key: K, updater: (prev: T[K]) => T[K]) => void;
   subscribe: (fn: () => void) => () => void;
+  snapshot: () => T;
 }
 
 export function createStore<T extends Record<string, unknown>>(initial: T): SignalStore<T> {
@@ -108,6 +124,14 @@ export function createStore<T extends Record<string, unknown>>(initial: T): Sign
       signals.set(key, createSignal(initial[key]) as [() => T[keyof T], (v: T[keyof T]) => void]);
     }
   }
+  
+  const notifyListeners = (): void => {
+    if (batchDepth > 0) {
+      listeners.forEach(fn => pendingEffects.add(fn));
+    } else {
+      listeners.forEach(fn => fn());
+    }
+  };
   
   return {
     get: <K extends keyof T>(key: K): T[K] => {
@@ -125,18 +149,88 @@ export function createStore<T extends Record<string, unknown>>(initial: T): Sign
       } else {
         signal[1](value);
       }
-      listeners.forEach(fn => fn());
+      notifyListeners();
     },
     update: <K extends keyof T>(key: K, updater: (prev: T[K]) => T[K]): void => {
       const signal = signals.get(key);
       if (signal) {
         signal[1](updater(signal[0]() as T[K]));
-        listeners.forEach(fn => fn());
+        notifyListeners();
       }
     },
     subscribe: (fn: () => void): (() => void) => {
       listeners.add(fn);
       return () => listeners.delete(fn);
+    },
+    snapshot: (): T => {
+      const result = {} as T;
+      signals.forEach((signal, key) => {
+        (result as Record<keyof T, unknown>)[key] = signal[0]();
+      });
+      return result;
     }
   };
+}
+
+export function createComputed<T>(fn: () => T): () => T {
+  let cachedValue: T;
+  let dirty = true;
+  const subscribers = new Set<Subscriber>();
+  
+  const compute = (): void => {
+    if (dirty) {
+      subscriberStack.push(compute);
+      currentSubscriber = compute;
+      try {
+        cachedValue = fn();
+        dirty = false;
+      } finally {
+        subscriberStack.pop();
+        currentSubscriber = subscriberStack[subscriberStack.length - 1] || null;
+      }
+      subscribers.forEach(sub => sub());
+    }
+  };
+  
+  return (): T => {
+    if (currentSubscriber) {
+      subscribers.add(currentSubscriber);
+    }
+    if (dirty) {
+      compute();
+    }
+    return cachedValue;
+  };
+}
+
+export function createRoot<T>(fn: (dispose: () => void) => T): T {
+  const cleanups: (() => void)[] = [];
+  const prevSubscriber = currentSubscriber;
+  
+  const dispose = (): void => {
+    for (let i = cleanups.length - 1; i >= 0; i--) {
+      cleanups[i]();
+    }
+    cleanups.length = 0;
+  };
+  
+  currentSubscriber = null;
+  
+  try {
+    return fn(dispose);
+  } finally {
+    currentSubscriber = prevSubscriber;
+  }
+}
+
+export function onCleanup(fn: () => void): void {
+  if (currentSubscriber) {
+    const subscriber = currentSubscriber;
+    const originalFn = subscriber;
+    const wrappedSubscriber = (): void => {
+      fn();
+      originalFn();
+    };
+    Object.assign(subscriber, wrappedSubscriber);
+  }
 }

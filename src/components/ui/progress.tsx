@@ -57,12 +57,16 @@ export interface ProgressProps
   label?: string;
 }
 
-const Progress = React.forwardRef<
+const Progress = React.memo(React.forwardRef<
   React.ElementRef<typeof ProgressPrimitive.Root>,
   ProgressProps
 >(({ className, value, size, variant, animated = true, showValue = false, label, ...props }, ref) => {
   const safeValue = Math.min(100, Math.max(0, value ?? 0));
   const ariaLabel = label ?? "Feldolgozási folyamat";
+
+  const transformStyle = React.useMemo(() => ({ 
+    transform: `translateX(-${100 - safeValue}%)` 
+  }), [safeValue]);
 
   return (
     <div className="w-full">
@@ -90,7 +94,7 @@ const Progress = React.forwardRef<
       >
         <ProgressPrimitive.Indicator
           className={cn(indicatorVariants({ variant, animated }))}
-          style={{ transform: `translateX(-${100 - safeValue}%)` }}
+          style={transformStyle}
         >
           {animated && (
             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-foreground/10 to-transparent animate-shimmer" />
@@ -99,7 +103,7 @@ const Progress = React.forwardRef<
       </ProgressPrimitive.Root>
     </div>
   );
-});
+}));
 
 Progress.displayName = ProgressPrimitive.Root.displayName;
 

@@ -60,6 +60,25 @@ export function bindClass(
   });
 }
 
+export function bindClasses(
+  element: HTMLElement,
+  classMap: () => Record<string, boolean>
+): () => void {
+  return createEffect(() => {
+    const map = classMap();
+    const entries = Object.entries(map);
+    const len = entries.length;
+    for (let i = 0; i < len; i++) {
+      const [cls, active] = entries[i];
+      if (active) {
+        element.classList.add(cls);
+      } else {
+        element.classList.remove(cls);
+      }
+    }
+  });
+}
+
 export function bindStyle(
   element: HTMLElement,
   property: string,
@@ -75,11 +94,30 @@ export function bindStyle(
   });
 }
 
+export function bindStyles(
+  element: HTMLElement,
+  styles: () => Record<string, string | number | null>
+): () => void {
+  return createEffect(() => {
+    const styleMap = styles();
+    const entries = Object.entries(styleMap);
+    const len = entries.length;
+    for (let i = 0; i < len; i++) {
+      const [prop, value] = entries[i];
+      if (value === null) {
+        element.style.removeProperty(prop);
+      } else {
+        element.style.setProperty(prop, String(value));
+      }
+    }
+  });
+}
+
 export function bindVisibility(
   element: HTMLElement,
   signal: () => boolean
 ): () => void {
-  const originalDisplay = element.style.display;
+  const originalDisplay = element.style.display || '';
   
   return createEffect(() => {
     const visible = signal();
@@ -88,12 +126,58 @@ export function bindVisibility(
 }
 
 export function bindDisabled(
-  element: HTMLButtonElement | HTMLInputElement,
+  element: HTMLButtonElement | HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement,
   signal: () => boolean
 ): () => void {
   return createEffect(() => {
     element.disabled = signal();
   });
+}
+
+export function bindValue(
+  element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement,
+  signal: () => string,
+  onChange?: (value: string) => void
+): () => void {
+  const cleanup = createEffect(() => {
+    element.value = signal();
+  });
+  
+  if (onChange) {
+    const handler = (e: Event): void => {
+      onChange((e.target as HTMLInputElement).value);
+    };
+    element.addEventListener('input', handler);
+    return () => {
+      cleanup();
+      element.removeEventListener('input', handler);
+    };
+  }
+  
+  return cleanup;
+}
+
+export function bindChecked(
+  element: HTMLInputElement,
+  signal: () => boolean,
+  onChange?: (checked: boolean) => void
+): () => void {
+  const cleanup = createEffect(() => {
+    element.checked = signal();
+  });
+  
+  if (onChange) {
+    const handler = (e: Event): void => {
+      onChange((e.target as HTMLInputElement).checked);
+    };
+    element.addEventListener('change', handler);
+    return () => {
+      cleanup();
+      element.removeEventListener('change', handler);
+    };
+  }
+  
+  return cleanup;
 }
 
 export interface ListBinding<T> {
@@ -113,8 +197,9 @@ export function bindList<T>(
   const cleanup = createEffect(() => {
     const items = itemsSignal();
     const newKeys = new Set<string | number>();
+    const len = items.length;
     
-    for (let i = 0; i < items.length; i++) {
+    for (let i = 0; i < len; i++) {
       const item = items[i];
       const key = keyFn(item, i);
       newKeys.add(key);
@@ -145,11 +230,10 @@ export function bindList<T>(
       }
     });
     
-    const children = Array.from(container.children);
-    for (let i = 0; i < items.length; i++) {
+    for (let i = 0; i < len; i++) {
       const key = keyFn(items[i], i);
       const entry = itemMap.get(key);
-      if (entry && children[i] !== entry.element) {
+      if (entry && container.children[i] !== entry.element) {
         container.insertBefore(entry.element, container.children[i]);
       }
     }
@@ -173,7 +257,10 @@ export function createDOMElement<K extends keyof HTMLElementTagNameMap>(
   const element = document.createElement(tag);
   
   if (attrs) {
-    for (const [key, value] of Object.entries(attrs)) {
+    const entries = Object.entries(attrs);
+    const len = entries.length;
+    for (let i = 0; i < len; i++) {
+      const [key, value] = entries[i];
       if (value === null || value === undefined || value === false) {
         continue;
       }
@@ -185,7 +272,9 @@ export function createDOMElement<K extends keyof HTMLElementTagNameMap>(
     }
   }
   
-  for (const child of children) {
+  const childLen = children.length;
+  for (let i = 0; i < childLen; i++) {
+    const child = children[i];
     if (typeof child === 'string') {
       element.appendChild(document.createTextNode(child));
     } else {
@@ -210,7 +299,10 @@ export function patchElement(
   }
   
   if (updates.style) {
-    for (const [prop, value] of Object.entries(updates.style)) {
+    const entries = Object.entries(updates.style);
+    const len = entries.length;
+    for (let i = 0; i < len; i++) {
+      const [prop, value] = entries[i];
       if (value === null) {
         element.style.removeProperty(prop);
       } else {
@@ -220,7 +312,10 @@ export function patchElement(
   }
   
   if (updates.attributes) {
-    for (const [attr, value] of Object.entries(updates.attributes)) {
+    const entries = Object.entries(updates.attributes);
+    const len = entries.length;
+    for (let i = 0; i < len; i++) {
+      const [attr, value] = entries[i];
       if (value === null) {
         element.removeAttribute(attr);
       } else {
@@ -250,27 +345,57 @@ export function dispatchCustomEvent<T>(element: HTMLElement, name: string, detai
 export function onCustomEvent<T>(
   element: HTMLElement,
   name: string,
-  handler: (detail: T) => void
+  handler: (detail: T) => void,
+  options?: AddEventListenerOptions
 ): () => void {
   const listener = (event: Event): void => {
     handler((event as CustomEvent<T>).detail);
   };
   
-  element.addEventListener(name, listener);
+  element.addEventListener(name, listener, options);
   
   return () => {
-    element.removeEventListener(name, listener);
+    element.removeEventListener(name, listener, options);
   };
+}
+
+export function on<K extends keyof HTMLElementEventMap>(
+  element: HTMLElement,
+  event: K,
+  handler: (e: HTMLElementEventMap[K]) => void,
+  options?: AddEventListenerOptions
+): () => void {
+  element.addEventListener(event, handler as EventListener, options);
+  return () => element.removeEventListener(event, handler as EventListener, options);
+}
+
+export function delegate<K extends keyof HTMLElementEventMap>(
+  container: HTMLElement,
+  event: K,
+  selector: string,
+  handler: (e: HTMLElementEventMap[K], target: HTMLElement) => void,
+  options?: AddEventListenerOptions
+): () => void {
+  const listener = (e: Event): void => {
+    const target = (e.target as HTMLElement).closest(selector);
+    if (target && container.contains(target)) {
+      handler(e as HTMLElementEventMap[K], target as HTMLElement);
+    }
+  };
+  
+  container.addEventListener(event, listener, options);
+  return () => container.removeEventListener(event, listener, options);
 }
 
 export function observeIntersection(
   element: HTMLElement,
-  callback: (isIntersecting: boolean) => void,
+  callback: (isIntersecting: boolean, entry: IntersectionObserverEntry) => void,
   options?: IntersectionObserverInit
 ): () => void {
   const observer = new IntersectionObserver((entries) => {
-    for (const entry of entries) {
-      callback(entry.isIntersecting);
+    const len = entries.length;
+    for (let i = 0; i < len; i++) {
+      callback(entries[i].isIntersecting, entries[i]);
     }
   }, options);
   
@@ -286,8 +411,9 @@ export function observeResize(
   callback: (entry: ResizeObserverEntry) => void
 ): () => void {
   const observer = new ResizeObserver((entries) => {
-    for (const entry of entries) {
-      callback(entry);
+    const len = entries.length;
+    for (let i = 0; i < len; i++) {
+      callback(entries[i]);
     }
   });
   
@@ -296,4 +422,80 @@ export function observeResize(
   return () => {
     observer.disconnect();
   };
+}
+
+export function observeMutation(
+  element: HTMLElement,
+  callback: (mutations: MutationRecord[]) => void,
+  options?: MutationObserverInit
+): () => void {
+  const observer = new MutationObserver(callback);
+  observer.observe(element, options || { childList: true, subtree: true });
+  return () => observer.disconnect();
+}
+
+export function setAttributes(
+  element: HTMLElement,
+  attrs: Record<string, string | number | boolean | null | undefined>
+): void {
+  const entries = Object.entries(attrs);
+  const len = entries.length;
+  for (let i = 0; i < len; i++) {
+    const [key, value] = entries[i];
+    if (value === null || value === undefined || value === false) {
+      element.removeAttribute(key);
+    } else if (value === true) {
+      element.setAttribute(key, '');
+    } else {
+      element.setAttribute(key, String(value));
+    }
+  }
+}
+
+export function setStyles(
+  element: HTMLElement,
+  styles: Record<string, string | number | null>
+): void {
+  const entries = Object.entries(styles);
+  const len = entries.length;
+  for (let i = 0; i < len; i++) {
+    const [prop, value] = entries[i];
+    if (value === null) {
+      element.style.removeProperty(prop);
+    } else {
+      element.style.setProperty(prop, String(value));
+    }
+  }
+}
+
+export function addClass(element: HTMLElement, ...classNames: string[]): void {
+  element.classList.add(...classNames);
+}
+
+export function removeClass(element: HTMLElement, ...classNames: string[]): void {
+  element.classList.remove(...classNames);
+}
+
+export function toggleClass(element: HTMLElement, className: string, force?: boolean): boolean {
+  return element.classList.toggle(className, force);
+}
+
+export function hasClass(element: HTMLElement, className: string): boolean {
+  return element.classList.contains(className);
+}
+
+export function replaceChildren(element: HTMLElement, ...nodes: (Node | string)[]): void {
+  element.replaceChildren(...nodes);
+}
+
+export function insertAdjacent(
+  element: HTMLElement,
+  position: InsertPosition,
+  node: Node | string
+): void {
+  if (typeof node === 'string') {
+    element.insertAdjacentHTML(position, node);
+  } else {
+    element.insertAdjacentElement(position, node as Element);
+  }
 }
