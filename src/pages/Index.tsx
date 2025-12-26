@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import JSZip from 'jszip';
 import { Scissors, RefreshCcw, Sparkles } from 'lucide-react';
 import { UploadZone } from '@/components/UploadZone';
@@ -54,17 +54,18 @@ const Index = () => {
     setIsDownloading(true);
     try {
       const zip = new JSZip();
+      const chunksLen = chunks.length;
 
-      chunks.forEach((chunk) => {
-        zip.file(chunk.name, chunk.blob);
-      });
+      for (let i = 0; i < chunksLen; i++) {
+        zip.file(chunks[i].name, chunks[i].blob);
+      }
 
       const content = await zip.generateAsync({ type: 'blob' });
       downloadBlob(content, FILE_CONFIG.ZIP_FILENAME);
 
       toast({
         title: TRANSLATIONS.download.downloadStarted,
-        description: TRANSLATIONS.download.downloadDescription(chunks.length),
+        description: TRANSLATIONS.download.downloadDescription(chunksLen),
       });
     } catch (error) {
       console.error('ZIP creation error:', error);
@@ -81,7 +82,12 @@ const Index = () => {
     downloadBlob(chunk.blob, chunk.name);
   }, []);
 
-  const isProcessing = status === 'loading' || status === 'processing';
+  const isProcessing = useMemo(() => status === 'loading' || status === 'processing', [status]);
+
+  const titleParts = useMemo(() => {
+    const parts = TRANSLATIONS.index.title.split(' ');
+    return { first: parts[0], second: parts[1] };
+  }, []);
 
   return (
     <div className="min-h-screen py-16 px-6 sm:px-8 lg:px-12">
@@ -91,8 +97,8 @@ const Index = () => {
         </div>
 
         <h1 className="text-5xl sm:text-6xl font-bold text-foreground mb-6 tracking-tight">
-          {TRANSLATIONS.index.title.split(' ')[0]}{' '}
-          <span className="text-gradient">{TRANSLATIONS.index.title.split(' ')[1]}</span>
+          {titleParts.first}{' '}
+          <span className="text-gradient">{titleParts.second}</span>
         </h1>
 
         <p className="text-lg text-muted-foreground max-w-lg mx-auto leading-relaxed">

@@ -1,4 +1,4 @@
-import { useCallback, useState, useMemo } from 'react';
+import { useCallback, useState, useMemo, useRef } from 'react';
 import { Upload, Film, Link2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -18,8 +18,19 @@ const validateYoutubeUrl = (url: string): boolean => {
 };
 
 const validateVideoFile = (file: File): { valid: boolean; error?: string } => {
-  const supportedFormats: string[] = [...FILE_CONFIG.SUPPORTED_FORMATS];
-  if (!supportedFormats.includes(file.type) && !file.type.startsWith('video/')) {
+  const supportedFormats = FILE_CONFIG.SUPPORTED_FORMATS;
+  const fileType = file.type;
+  
+  let isSupported = false;
+  const formatsLen = supportedFormats.length;
+  for (let i = 0; i < formatsLen; i++) {
+    if (supportedFormats[i] === fileType) {
+      isSupported = true;
+      break;
+    }
+  }
+  
+  if (!isSupported && !fileType.startsWith('video/')) {
     return { valid: false, error: TRANSLATIONS.upload.invalidFormat };
   }
 
@@ -36,6 +47,7 @@ export const UploadZone = ({ onFileSelect, onYoutubeUrl, isProcessing }: UploadZ
   const [youtubeUrl, setYoutubeUrl] = useState('');
   const [mode, setMode] = useState<'upload' | 'youtube'>('upload');
   const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isValidYoutubeUrl = useMemo(() => validateYoutubeUrl(youtubeUrl), [youtubeUrl]);
 
@@ -101,6 +113,22 @@ export const UploadZone = ({ onFileSelect, onYoutubeUrl, isProcessing }: UploadZ
     setError(null);
   }, []);
 
+  const handleUrlChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setYoutubeUrl(e.target.value);
+    setError(null);
+  }, []);
+
+  const dropZoneClassName = useMemo(() => cn(
+    'relative border-2 border-dashed rounded-3xl p-16 transition-all duration-300 cursor-pointer group glass',
+    isDragging ? 'border-primary bg-primary/5 glow-strong' : 'border-border hover:border-muted-foreground/30 hover:bg-secondary/20',
+    isProcessing && 'opacity-50 pointer-events-none'
+  ), [isDragging, isProcessing]);
+
+  const iconContainerClassName = useMemo(() => cn(
+    'w-24 h-24 rounded-3xl glass glass-border flex items-center justify-center transition-all duration-300',
+    isDragging ? 'glow-strong scale-110' : 'group-hover:glow-primary group-hover:scale-105'
+  ), [isDragging]);
+
   return (
     <div className="w-full max-w-2xl mx-auto animate-fade-in">
       <div className="flex gap-3 mb-8 justify-center" role="tablist" aria-label="Feltöltési mód">
@@ -146,16 +174,20 @@ export const UploadZone = ({ onFileSelect, onYoutubeUrl, isProcessing }: UploadZ
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          className={cn(
-            'relative border-2 border-dashed rounded-3xl p-16 transition-all duration-300 cursor-pointer group glass',
-            isDragging ? 'border-primary bg-primary/5 glow-strong' : 'border-border hover:border-muted-foreground/30 hover:bg-secondary/20',
-            isProcessing && 'opacity-50 pointer-events-none'
-          )}
+          className={dropZoneClassName}
         >
-          <input type="file" accept="video/mp4,video/webm,video/quicktime,video/x-msvideo,.mp4,.mov,.avi,.webm" onChange={handleFileInput} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" disabled={isProcessing} aria-label={TRANSLATIONS.accessibility.fileInput} />
+          <input 
+            ref={fileInputRef}
+            type="file" 
+            accept="video/mp4,video/webm,video/quicktime,video/x-msvideo,.mp4,.mov,.avi,.webm" 
+            onChange={handleFileInput} 
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" 
+            disabled={isProcessing} 
+            aria-label={TRANSLATIONS.accessibility.fileInput} 
+          />
 
           <div className="flex flex-col items-center gap-6 text-center">
-            <div className={cn('w-24 h-24 rounded-3xl glass glass-border flex items-center justify-center transition-all duration-300', isDragging ? 'glow-strong scale-110' : 'group-hover:glow-primary group-hover:scale-105')}>
+            <div className={iconContainerClassName}>
               <Film className="w-12 h-12 text-primary" aria-hidden="true" />
             </div>
 
@@ -183,10 +215,7 @@ export const UploadZone = ({ onFileSelect, onYoutubeUrl, isProcessing }: UploadZ
             <input
               type="url"
               value={youtubeUrl}
-              onChange={(e) => {
-                setYoutubeUrl(e.target.value);
-                setError(null);
-              }}
+              onChange={handleUrlChange}
               placeholder="https://www.youtube.com/watch?v=..."
               className="w-full h-14 px-5 rounded-2xl bg-secondary/50 border border-border text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 font-mono text-sm transition-all duration-300"
               disabled={isProcessing}
@@ -194,7 +223,13 @@ export const UploadZone = ({ onFileSelect, onYoutubeUrl, isProcessing }: UploadZ
               aria-invalid={error ? 'true' : 'false'}
             />
 
-            <Button variant="glow" size="xl" onClick={handleYoutubeSubmit} disabled={!youtubeUrl.trim() || isProcessing || !isValidYoutubeUrl} className="w-full">
+            <Button 
+              variant="glow" 
+              size="xl" 
+              onClick={handleYoutubeSubmit} 
+              disabled={!youtubeUrl.trim() || isProcessing || !isValidYoutubeUrl} 
+              className="w-full"
+            >
               {TRANSLATIONS.upload.processVideo}
             </Button>
           </div>

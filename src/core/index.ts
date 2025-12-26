@@ -2,6 +2,9 @@ export {
   createSignal,
   createEffect,
   createMemo,
+  createComputed,
+  createRoot,
+  onCleanup,
   batch,
   untrack,
   createStore,
@@ -12,24 +15,43 @@ export {
   html,
   createElement,
   mount,
-  render
+  render,
+  fragment,
+  when,
+  each,
+  createPortal
 } from './template';
 
 export {
   bindText,
   bindAttribute,
   bindClass,
+  bindClasses,
   bindStyle,
+  bindStyles,
   bindVisibility,
   bindDisabled,
+  bindValue,
+  bindChecked,
   bindList,
   createDOMElement,
   patchElement,
   createCustomEvent,
   dispatchCustomEvent,
   onCustomEvent,
+  on,
+  delegate,
   observeIntersection,
   observeResize,
+  observeMutation,
+  setAttributes,
+  setStyles,
+  addClass,
+  removeClass,
+  toggleClass,
+  hasClass,
+  replaceChildren,
+  insertAdjacent,
   type DOMBinding,
   type ListBinding
 } from './dom';
@@ -43,6 +65,7 @@ export {
   sumTypedArray,
   maxTypedArray,
   minTypedArray,
+  averageTypedArray,
   copyTypedArray,
   fillTypedArray,
   bitwiseAnd,
@@ -55,6 +78,13 @@ export {
   clearBit,
   toggleBit,
   testBit,
+  createBitmap,
+  setBits,
+  clearBits,
+  getBitIndices,
+  mergeSort,
+  quickSelect,
+  partialSort,
   type TypedArrayPool
 } from './typed-arrays';
 
@@ -65,6 +95,7 @@ export {
   scheduleNormal,
   scheduleLow,
   scheduleIdle,
+  cancelTask,
   flushSync,
   clearQueue,
   getQueueLength,
@@ -72,5 +103,11 @@ export {
   nextTick,
   nextFrame,
   throttleFrame,
-  debounceFrame
+  debounceFrame,
+  throttle,
+  debounce,
+  batch as batchTasks,
+  runAfterPaint,
+  whenIdle,
+  cancelIdle
 } from './scheduler';

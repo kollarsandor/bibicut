@@ -1,4 +1,4 @@
-import { Suspense, lazy, Component, ReactNode } from "react";
+import { Suspense, lazy, Component, ReactNode, memo } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -32,6 +32,10 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
     console.error("ErrorBoundary caught an error:", error, errorInfo);
   }
 
+  handleReload = (): void => {
+    window.location.reload();
+  };
+
   render(): ReactNode {
     if (this.state.hasError) {
       if (this.props.fallback) {
@@ -47,7 +51,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
               Az alkalmazás váratlan hibába ütközött. Kérjük, frissítsd az oldalt.
             </p>
             <button
-              onClick={() => window.location.reload()}
+              onClick={this.handleReload}
               className="px-8 py-4 bg-primary text-primary-foreground rounded-2xl font-semibold hover:bg-primary/90 transition-all duration-300 active:scale-[0.97] apple-shadow-sm"
             >
               Oldal frissítése
@@ -61,7 +65,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 }
 
-function LoadingFallback(): JSX.Element {
+const LoadingFallback = memo(function LoadingFallback(): JSX.Element {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
       <div className="flex flex-col items-center gap-6">
@@ -70,7 +74,7 @@ function LoadingFallback(): JSX.Element {
       </div>
     </div>
   );
-}
+});
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -78,7 +82,7 @@ const queryClient = new QueryClient({
       staleTime: 60000,
       gcTime: 300000,
       retry: 3,
-      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+      retryDelay: (attemptIndex) => Math.min(1000 * (1 << attemptIndex), 30000),
       refetchOnWindowFocus: false,
     },
     mutations: {
@@ -86,6 +90,15 @@ const queryClient = new QueryClient({
       retryDelay: 1000,
     },
   },
+});
+
+const AppRoutes = memo(function AppRoutes(): JSX.Element {
+  return (
+    <Routes>
+      <Route path="/" element={<Index />} />
+      <Route path="*" element={<NotFound />} />
+    </Routes>
+  );
 });
 
 function App(): JSX.Element {
@@ -97,10 +110,7 @@ function App(): JSX.Element {
           <Sonner position="top-right" richColors closeButton />
           <BrowserRouter>
             <Suspense fallback={<LoadingFallback />}>
-              <Routes>
-                <Route path="/" element={<Index />} />
-                <Route path="*" element={<NotFound />} />
-              </Routes>
+              <AppRoutes />
             </Suspense>
           </BrowserRouter>
         </TooltipProvider>

@@ -1,4 +1,4 @@
-import { createSignal, createEffect, createMemo, batch } from '@/core/signal';
+import { createSignal, batch } from '@/core/signal';
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { toBlobURL } from '@ffmpeg/util';
 import { supabase } from '@/lib/supabaseClient';
@@ -46,7 +46,8 @@ function getFFmpeg(): FFmpeg {
 }
 
 function cleanupBlobUrls(): void {
-  for (let i = 0; i < blobUrls.length; i++) {
+  const len = blobUrls.length;
+  for (let i = 0; i < len; i++) {
     try {
       URL.revokeObjectURL(blobUrls[i]);
     } catch (e) {}
@@ -65,16 +66,22 @@ export function createVideoProcessorStore(): VideoProcessorStore {
   const subscribers = new Set<() => void>();
   
   const notify = (): void => {
-    subscribers.forEach(fn => fn());
+    const subs = Array.from(subscribers);
+    const len = subs.length;
+    for (let i = 0; i < len; i++) {
+      subs[i]();
+    }
   };
   
   const loadFFmpeg = async (): Promise<boolean> => {
     if (isFFmpegLoaded) return true;
     
     try {
-      setStatus('loading');
-      setCurrentStep(TRANSLATIONS.processing.loadingFfmpeg);
-      setProgress(VIDEO_PROCESSOR_CONFIG.PROGRESS.FFMPEG_LOADING);
+      batch(() => {
+        setStatus('loading');
+        setCurrentStep(TRANSLATIONS.processing.loadingFfmpeg);
+        setProgress(VIDEO_PROCESSOR_CONFIG.PROGRESS.FFMPEG_LOADING);
+      });
       notify();
       
       const ffmpeg = getFFmpeg();
@@ -93,8 +100,10 @@ export function createVideoProcessorStore(): VideoProcessorStore {
       return true;
     } catch (error) {
       console.error('FFmpeg load error:', error);
-      setStatus('error');
-      setCurrentStep(TRANSLATIONS.processing.ffmpegLoadError);
+      batch(() => {
+        setStatus('error');
+        setCurrentStep(TRANSLATIONS.processing.ffmpegLoadError);
+      });
       notify();
       return false;
     }
@@ -137,11 +146,13 @@ export function createVideoProcessorStore(): VideoProcessorStore {
     const ffmpeg = getFFmpeg();
     
     try {
-      setStatus('processing');
-      setCurrentStep(TRANSLATIONS.processing.preparingVideo);
-      setProgress(VIDEO_PROCESSOR_CONFIG.PROGRESS.VIDEO_PREPARING);
-      setChunks([]);
-      setProcessedChunks(0);
+      batch(() => {
+        setStatus('processing');
+        setCurrentStep(TRANSLATIONS.processing.preparingVideo);
+        setProgress(VIDEO_PROCESSOR_CONFIG.PROGRESS.VIDEO_PREPARING);
+        setChunks([]);
+        setProcessedChunks(0);
+      });
       notify();
       
       const [arrayBuffer, videoDuration] = await Promise.all([
@@ -151,8 +162,9 @@ export function createVideoProcessorStore(): VideoProcessorStore {
       
       if (cancelledFlag) return;
       
-      const extension = fileName.includes('.') 
-        ? fileName.substring(fileName.lastIndexOf('.')) 
+      const lastDotIndex = fileName.lastIndexOf('.');
+      const extension = lastDotIndex !== -1 
+        ? fileName.substring(lastDotIndex) 
         : FILE_CONFIG.DEFAULT_VIDEO_EXTENSION;
       const inputName = 'input' + extension;
       
@@ -167,8 +179,10 @@ export function createVideoProcessorStore(): VideoProcessorStore {
       
       const chunkDuration = VIDEO_PROCESSOR_CONFIG.CHUNK_DURATION_SECONDS;
       const numChunks = Math.ceil(videoDuration / chunkDuration);
-      setTotalChunks(numChunks);
-      setProgress(VIDEO_PROCESSOR_CONFIG.PROGRESS.PROCESSING_START);
+      batch(() => {
+        setTotalChunks(numChunks);
+        setProgress(VIDEO_PROCESSOR_CONFIG.PROGRESS.PROCESSING_START);
+      });
       notify();
       
       const newChunks: VideoChunk[] = [];
@@ -184,7 +198,8 @@ export function createVideoProcessorStore(): VideoProcessorStore {
           const startTime = i * chunkDuration;
           const actualDuration = Math.min(chunkDuration, videoDuration - startTime);
           const endTime = startTime + actualDuration;
-          const outputName = `part_${String(i + 1).padStart(VIDEO_PROCESSOR_CONFIG.PADDING_DIGITS, '0')}.mp4`;
+          const paddedIndex = String(i + 1).padStart(VIDEO_PROCESSOR_CONFIG.PADDING_DIGITS, '0');
+          const outputName = `part_${paddedIndex}.mp4`;
           
           const processChunk = async (): Promise<VideoChunk> => {
             await ffmpeg.exec([
@@ -220,12 +235,17 @@ export function createVideoProcessorStore(): VideoProcessorStore {
         notify();
         
         const batchResults = await Promise.all(batchPromises);
-        newChunks.push(...batchResults);
+        const resultsLen = batchResults.length;
+        for (let i = 0; i < resultsLen; i++) {
+          newChunks.push(batchResults[i]);
+        }
         
-        setProcessedChunks(batchEnd);
         const progressValue = VIDEO_PROCESSOR_CONFIG.PROGRESS.PROCESSING_START +
           (batchEnd / numChunks) * VIDEO_PROCESSOR_CONFIG.PROGRESS.PROCESSING_RANGE;
-        setProgress(progressValue);
+        batch(() => {
+          setProcessedChunks(batchEnd);
+          setProgress(progressValue);
+        });
         notify();
       }
       
@@ -233,18 +253,22 @@ export function createVideoProcessorStore(): VideoProcessorStore {
       
       newChunks.sort((a, b) => a.startTime - b.startTime);
       
-      setChunks(newChunks);
-      setStatus('complete');
-      setCurrentStep(TRANSLATIONS.processing.allChunksComplete);
-      setProgress(VIDEO_PROCESSOR_CONFIG.PROGRESS.COMPLETE);
+      batch(() => {
+        setChunks(newChunks);
+        setStatus('complete');
+        setCurrentStep(TRANSLATIONS.processing.allChunksComplete);
+        setProgress(VIDEO_PROCESSOR_CONFIG.PROGRESS.COMPLETE);
+      });
       notify();
     } catch (error) {
       console.error('Processing error:', error);
-      setStatus('error');
       const errorMessage = error instanceof Error 
         ? error.message 
         : TRANSLATIONS.processing.processingError;
-      setCurrentStep(errorMessage);
+      batch(() => {
+        setStatus('error');
+        setCurrentStep(errorMessage);
+      });
       notify();
     }
   };
@@ -257,9 +281,11 @@ export function createVideoProcessorStore(): VideoProcessorStore {
     cancelledFlag = false;
     
     try {
-      setStatus('loading');
-      setCurrentStep(TRANSLATIONS.youtube.downloading);
-      setProgress(VIDEO_PROCESSOR_CONFIG.PROGRESS.YOUTUBE_START);
+      batch(() => {
+        setStatus('loading');
+        setCurrentStep(TRANSLATIONS.youtube.downloading);
+        setProgress(VIDEO_PROCESSOR_CONFIG.PROGRESS.YOUTUBE_START);
+      });
       notify();
       
       const { data, error } = await supabase.functions.invoke<DownloadResult>('youtube-download', {
@@ -277,13 +303,16 @@ export function createVideoProcessorStore(): VideoProcessorStore {
         throw new Error(data?.error || TRANSLATIONS.youtube.downloadFailed);
       }
       
-      setCurrentStep(TRANSLATIONS.youtube.decoding);
-      setProgress(VIDEO_PROCESSOR_CONFIG.PROGRESS.YOUTUBE_DECODING);
+      batch(() => {
+        setCurrentStep(TRANSLATIONS.youtube.decoding);
+        setProgress(VIDEO_PROCESSOR_CONFIG.PROGRESS.YOUTUBE_DECODING);
+      });
       notify();
       
       const binaryString = atob(data.videoBase64);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
+      const bytesLen = binaryString.length;
+      const bytes = new Uint8Array(bytesLen);
+      for (let i = 0; i < bytesLen; i++) {
         bytes[i] = binaryString.charCodeAt(i);
       }
       
@@ -298,23 +327,28 @@ export function createVideoProcessorStore(): VideoProcessorStore {
       await processVideoBlob(videoBlob, fileName);
     } catch (error) {
       console.error('YouTube processing error:', error);
-      setStatus('error');
       const errorMessage = error instanceof Error 
         ? error.message 
         : TRANSLATIONS.youtube.processingError;
-      setCurrentStep(errorMessage);
+      batch(() => {
+        setStatus('error');
+        setCurrentStep(errorMessage);
+      });
       notify();
     }
   };
   
   const reset = (): void => {
     cancelledFlag = true;
-    setStatus('idle');
-    setProgress(0);
-    setCurrentStep('');
-    setChunks([]);
-    setTotalChunks(0);
-    setProcessedChunks(0);
+    cleanupBlobUrls();
+    batch(() => {
+      setStatus('idle');
+      setProgress(0);
+      setCurrentStep('');
+      setChunks([]);
+      setTotalChunks(0);
+      setProcessedChunks(0);
+    });
     notify();
   };
   

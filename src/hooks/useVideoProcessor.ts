@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { getVideoProcessorStore, type VideoProcessorStore } from '@/stores/videoProcessor';
 import type { VideoChunk, ProcessingStatus } from '@/types/video';
 
@@ -16,14 +16,20 @@ interface UseVideoProcessorReturn {
 }
 
 export const useVideoProcessor = (): UseVideoProcessorReturn => {
-  const store = getVideoProcessorStore();
+  const storeRef = useRef<VideoProcessorStore | null>(null);
   
-  const [status, setStatus] = useState<ProcessingStatus>(store.getStatus());
-  const [progress, setProgress] = useState(store.getProgress());
-  const [currentStep, setCurrentStep] = useState(store.getCurrentStep());
-  const [chunks, setChunks] = useState<VideoChunk[]>(store.getChunks());
-  const [totalChunks, setTotalChunks] = useState(store.getTotalChunks());
-  const [processedChunks, setProcessedChunks] = useState(store.getProcessedChunks());
+  if (!storeRef.current) {
+    storeRef.current = getVideoProcessorStore();
+  }
+  
+  const store = storeRef.current;
+  
+  const [status, setStatus] = useState<ProcessingStatus>(() => store.getStatus());
+  const [progress, setProgress] = useState(() => store.getProgress());
+  const [currentStep, setCurrentStep] = useState(() => store.getCurrentStep());
+  const [chunks, setChunks] = useState<VideoChunk[]>(() => store.getChunks());
+  const [totalChunks, setTotalChunks] = useState(() => store.getTotalChunks());
+  const [processedChunks, setProcessedChunks] = useState(() => store.getProcessedChunks());
   
   useEffect(() => {
     const unsubscribe = store.subscribe(() => {
