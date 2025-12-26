@@ -1,7 +1,5 @@
-import { useCallback, useState, useMemo, useRef } from 'react';
-import { Upload, Film, Link2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
+import { useCallback, useState, useMemo, useRef, memo } from 'react';
+import { Button, UploadIcon, FilmIcon, LinkIcon } from '@/components/ui/ui';
 import { FILE_CONFIG } from '@/constants/config';
 import { TRANSLATIONS } from '@/constants/translations';
 
@@ -42,7 +40,7 @@ const validateVideoFile = (file: File): { valid: boolean; error?: string } => {
   return { valid: true };
 };
 
-export const UploadZone = ({ onFileSelect, onYoutubeUrl, isProcessing }: UploadZoneProps) => {
+export const UploadZone = memo(function UploadZone({ onFileSelect, onYoutubeUrl, isProcessing }: UploadZoneProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [youtubeUrl, setYoutubeUrl] = useState('');
   const [mode, setMode] = useState<'upload' | 'youtube'>('upload');
@@ -118,16 +116,14 @@ export const UploadZone = ({ onFileSelect, onYoutubeUrl, isProcessing }: UploadZ
     setError(null);
   }, []);
 
-  const dropZoneClassName = useMemo(() => cn(
-    'relative border-2 border-dashed rounded-3xl p-16 transition-all duration-300 cursor-pointer group glass',
-    isDragging ? 'border-primary bg-primary/5 glow-strong' : 'border-border hover:border-muted-foreground/30 hover:bg-secondary/20',
-    isProcessing && 'opacity-50 pointer-events-none'
-  ), [isDragging, isProcessing]);
+  const dropZoneBaseClass = 'relative border-2 border-dashed rounded-3xl p-16 transition-all duration-300 cursor-pointer group glass';
+  const dropZoneDragClass = isDragging ? 'border-primary bg-primary/5 glow-strong' : 'border-border hover:border-muted-foreground/30 hover:bg-secondary/20';
+  const dropZoneDisabledClass = isProcessing ? 'opacity-50 pointer-events-none' : '';
+  const dropZoneClassName = `${dropZoneBaseClass} ${dropZoneDragClass} ${dropZoneDisabledClass}`;
 
-  const iconContainerClassName = useMemo(() => cn(
-    'w-24 h-24 rounded-3xl glass glass-border flex items-center justify-center transition-all duration-300',
-    isDragging ? 'glow-strong scale-110' : 'group-hover:glow-primary group-hover:scale-105'
-  ), [isDragging]);
+  const iconContainerBaseClass = 'w-24 h-24 rounded-3xl glass glass-border flex items-center justify-center transition-all duration-300';
+  const iconContainerDragClass = isDragging ? 'glow-strong scale-110' : 'group-hover:glow-primary group-hover:scale-105';
+  const iconContainerClassName = `${iconContainerBaseClass} ${iconContainerDragClass}`;
 
   return (
     <div className="w-full max-w-2xl mx-auto animate-fade-in">
@@ -137,12 +133,9 @@ export const UploadZone = ({ onFileSelect, onYoutubeUrl, isProcessing }: UploadZ
           size="lg"
           onClick={() => handleModeChange('upload')} 
           disabled={isProcessing} 
-          role="tab" 
-          aria-selected={mode === 'upload'} 
-          aria-controls="upload-panel"
           className="apple-hover"
         >
-          <Upload className="w-4 h-4 mr-2" aria-hidden="true" />
+          <UploadIcon className="w-4 h-4 mr-2" aria-hidden="true" />
           {TRANSLATIONS.upload.fileUpload}
         </Button>
         <Button 
@@ -150,12 +143,9 @@ export const UploadZone = ({ onFileSelect, onYoutubeUrl, isProcessing }: UploadZ
           size="lg"
           onClick={() => handleModeChange('youtube')} 
           disabled={isProcessing} 
-          role="tab" 
-          aria-selected={mode === 'youtube'} 
-          aria-controls="youtube-panel"
           className="apple-hover"
         >
-          <Link2 className="w-4 h-4 mr-2" aria-hidden="true" />
+          <LinkIcon className="w-4 h-4 mr-2" aria-hidden="true" />
           {TRANSLATIONS.upload.youtubeLink}
         </Button>
       </div>
@@ -168,9 +158,6 @@ export const UploadZone = ({ onFileSelect, onYoutubeUrl, isProcessing }: UploadZ
 
       {mode === 'upload' ? (
         <div
-          id="upload-panel"
-          role="tabpanel"
-          aria-labelledby="upload-tab"
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
@@ -188,7 +175,7 @@ export const UploadZone = ({ onFileSelect, onYoutubeUrl, isProcessing }: UploadZ
 
           <div className="flex flex-col items-center gap-6 text-center">
             <div className={iconContainerClassName}>
-              <Film className="w-12 h-12 text-primary" aria-hidden="true" />
+              <FilmIcon className="w-12 h-12 text-primary" aria-hidden="true" />
             </div>
 
             <div>
@@ -200,11 +187,11 @@ export const UploadZone = ({ onFileSelect, onYoutubeUrl, isProcessing }: UploadZ
           </div>
         </div>
       ) : (
-        <div id="youtube-panel" role="tabpanel" aria-labelledby="youtube-tab" className="glass glass-border apple-shadow rounded-3xl p-10">
+        <div className="glass glass-border apple-shadow rounded-3xl p-10">
           <div className="flex flex-col gap-6">
             <div className="flex items-center gap-4">
               <div className="w-14 h-14 rounded-2xl bg-destructive/15 flex items-center justify-center">
-                <Link2 className="w-7 h-7 text-destructive" aria-hidden="true" />
+                <LinkIcon className="w-7 h-7 text-destructive" aria-hidden="true" />
               </div>
               <div>
                 <p className="font-semibold text-foreground text-lg">{TRANSLATIONS.upload.youtubeVideo}</p>
@@ -237,4 +224,4 @@ export const UploadZone = ({ onFileSelect, onYoutubeUrl, isProcessing }: UploadZ
       )}
     </div>
   );
-};
+});

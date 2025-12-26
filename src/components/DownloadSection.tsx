@@ -1,6 +1,5 @@
 import { memo, useCallback, useMemo } from 'react';
-import { Download, FileVideo, Clock } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button, DownloadIcon, FileVideoIcon, ClockIcon } from '@/components/ui/ui';
 import type { VideoChunk } from '@/types/video';
 import { TRANSLATIONS } from '@/constants/translations';
 
@@ -25,7 +24,7 @@ interface ChunkItemProps {
   onDownload: (chunk: VideoChunk) => void;
 }
 
-const ChunkItem = memo(({ chunk, index, onDownload }: ChunkItemProps) => {
+const ChunkItem = memo(function ChunkItem({ chunk, index, onDownload }: ChunkItemProps) {
   const handleClick = useCallback(() => {
     onDownload(chunk);
   }, [chunk, onDownload]);
@@ -41,13 +40,13 @@ const ChunkItem = memo(({ chunk, index, onDownload }: ChunkItemProps) => {
       role="listitem"
     >
       <div className="w-12 h-12 rounded-xl bg-primary/15 flex items-center justify-center">
-        <FileVideo className="w-6 h-6 text-primary" aria-hidden="true" />
+        <FileVideoIcon className="w-6 h-6 text-primary" aria-hidden="true" />
       </div>
 
       <div className="flex-1 min-w-0">
         <p className="font-medium text-foreground truncate font-mono text-sm">{chunk.name}</p>
         <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
-          <Clock className="w-3 h-3" aria-hidden="true" />
+          <ClockIcon className="w-3 h-3" aria-hidden="true" />
           <span>{timeRange}</span>
         </div>
       </div>
@@ -59,15 +58,13 @@ const ChunkItem = memo(({ chunk, index, onDownload }: ChunkItemProps) => {
         className="opacity-0 group-hover:opacity-100 transition-all duration-300" 
         aria-label={`${TRANSLATIONS.accessibility.downloadChunk}: ${chunk.name}`}
       >
-        <Download className="w-4 h-4" aria-hidden="true" />
+        <DownloadIcon className="w-4 h-4" aria-hidden="true" />
       </Button>
     </div>
   );
 });
 
-ChunkItem.displayName = 'ChunkItem';
-
-export const DownloadSection = memo(({ chunks, onDownloadAll, onDownloadSingle, isDownloading }: DownloadSectionProps) => {
+export const DownloadSection = memo(function DownloadSection({ chunks, onDownloadAll, onDownloadSingle, isDownloading }: DownloadSectionProps) {
   const chunksLen = chunks.length;
   
   if (chunksLen === 0) return null;
@@ -91,7 +88,7 @@ export const DownloadSection = memo(({ chunks, onDownloadAll, onDownloadSingle, 
             aria-label={TRANSLATIONS.accessibility.downloadAll} 
             className="apple-hover"
           >
-            <Download className="w-5 h-5 mr-2" aria-hidden="true" />
+            <DownloadIcon className="w-5 h-5 mr-2" aria-hidden="true" />
             {TRANSLATIONS.download.downloadZip}
           </Button>
         </div>
@@ -110,5 +107,3 @@ export const DownloadSection = memo(({ chunks, onDownloadAll, onDownloadSingle, 
     </div>
   );
 });
-
-DownloadSection.displayName = 'DownloadSection';

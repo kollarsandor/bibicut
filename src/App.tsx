@@ -1,7 +1,5 @@
 import { Suspense, lazy, Component, ReactNode, memo } from "react";
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { Toaster } from "@/components/ui/ui";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
@@ -105,15 +103,12 @@ function App(): JSX.Element {
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <TooltipProvider delayDuration={300}>
-          <Toaster />
-          <Sonner position="top-right" richColors closeButton />
-          <BrowserRouter>
-            <Suspense fallback={<LoadingFallback />}>
-              <AppRoutes />
-            </Suspense>
-          </BrowserRouter>
-        </TooltipProvider>
+        <Toaster />
+        <BrowserRouter>
+          <Suspense fallback={<LoadingFallback />}>
+            <AppRoutes />
+          </Suspense>
+        </BrowserRouter>
       </QueryClientProvider>
     </ErrorBoundary>
   );
