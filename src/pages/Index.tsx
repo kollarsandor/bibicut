@@ -84,27 +84,28 @@ const Index = () => {
   const isProcessing = status === 'loading' || status === 'processing';
 
   return (
-    <div className="min-h-screen py-12 px-4 sm:px-6 lg:px-8">
-      <header className="text-center mb-12">
-        <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl gradient-accent mb-6 glow-strong animate-float">
-          <Scissors className="w-10 h-10 text-primary-foreground" aria-hidden="true" />
+    <div className="min-h-screen py-16 px-6 sm:px-8 lg:px-12">
+      <header className="text-center mb-16 animate-fade-in">
+        <div className="inline-flex items-center justify-center w-24 h-24 rounded-3xl gradient-accent mb-8 apple-shadow glow-strong animate-float">
+          <Scissors className="w-12 h-12 text-primary-foreground" aria-hidden="true" />
         </div>
 
-        <h1 className="text-4xl sm:text-5xl font-bold text-foreground mb-4">
-          {TRANSLATIONS.index.title.split(' ')[0]} <span className="text-gradient">{TRANSLATIONS.index.title.split(' ')[1]}</span>
+        <h1 className="text-5xl sm:text-6xl font-bold text-foreground mb-6 tracking-tight">
+          {TRANSLATIONS.index.title.split(' ')[0]}{' '}
+          <span className="text-gradient">{TRANSLATIONS.index.title.split(' ')[1]}</span>
         </h1>
 
-        <p className="text-lg text-muted-foreground max-w-xl mx-auto">
+        <p className="text-lg text-muted-foreground max-w-lg mx-auto leading-relaxed">
           {TRANSLATIONS.index.subtitle}
-          <br />
-          <span className="inline-flex items-center gap-1 text-sm mt-2">
-            <Sparkles className="w-4 h-4 text-primary" aria-hidden="true" />
-            {TRANSLATIONS.index.youtubeSupport}
-          </span>
         </p>
+        
+        <div className="inline-flex items-center gap-2 mt-4 px-4 py-2 rounded-full bg-secondary/50 glass-border">
+          <Sparkles className="w-4 h-4 text-primary" aria-hidden="true" />
+          <span className="text-sm text-muted-foreground">{TRANSLATIONS.index.youtubeSupport}</span>
+        </div>
       </header>
 
-      <main className="space-y-8">
+      <main className="space-y-10">
         {status === 'idle' && <UploadZone onFileSelect={handleFileSelect} onYoutubeUrl={handleYoutubeUrl} isProcessing={isProcessing} />}
 
         {(status === 'loading' || status === 'processing') && <ProcessingStatus status={status} progress={progress} currentStep={currentStep} totalChunks={totalChunks} processedChunks={processedChunks} />}
@@ -114,7 +115,7 @@ const Index = () => {
             <DownloadSection chunks={chunks} onDownloadAll={handleDownloadAll} onDownloadSingle={handleDownloadSingle} isDownloading={isDownloading} />
 
             <div className="flex justify-center">
-              <Button variant="outline" size="lg" onClick={reset}>
+              <Button variant="outline" size="lg" onClick={reset} className="apple-hover">
                 <RefreshCcw className="w-4 h-4 mr-2" aria-hidden="true" />
                 {TRANSLATIONS.index.newVideo}
               </Button>
@@ -123,10 +124,10 @@ const Index = () => {
         )}
 
         {status === 'error' && (
-          <div className="text-center">
-            <div className="gradient-card rounded-2xl p-8 border border-destructive/50 max-w-md mx-auto" role="alert">
-              <p className="text-destructive mb-4">{currentStep}</p>
-              <Button variant="outline" onClick={reset}>
+          <div className="text-center animate-fade-in">
+            <div className="glass glass-border apple-shadow rounded-3xl p-10 max-w-md mx-auto" role="alert">
+              <p className="text-destructive mb-6 text-lg">{currentStep}</p>
+              <Button variant="outline" size="lg" onClick={reset} className="apple-hover">
                 <RefreshCcw className="w-4 h-4 mr-2" aria-hidden="true" />
                 {TRANSLATIONS.index.retry}
               </Button>
@@ -135,9 +136,9 @@ const Index = () => {
         )}
       </main>
 
-      <footer className="mt-16 text-center text-sm text-muted-foreground">
-        <p>{TRANSLATIONS.index.footerLine1}</p>
-        <p className="mt-1">{TRANSLATIONS.index.footerLine2}</p>
+      <footer className="mt-20 text-center">
+        <p className="text-sm text-muted-foreground/60">{TRANSLATIONS.index.footerLine1}</p>
+        <p className="text-sm text-muted-foreground/40 mt-1">{TRANSLATIONS.index.footerLine2}</p>
       </footer>
     </div>
   );

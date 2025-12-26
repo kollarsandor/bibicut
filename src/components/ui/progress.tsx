@@ -4,7 +4,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const progressVariants = cva(
-  "relative w-full overflow-hidden rounded-full bg-secondary",
+  "relative w-full overflow-hidden rounded-full bg-secondary/50",
   {
     variants: {
       size: {
@@ -28,7 +28,7 @@ const progressVariants = cva(
 );
 
 const indicatorVariants = cva(
-  "h-full w-full flex-1 transition-all duration-500 ease-out relative overflow-hidden",
+  "h-full w-full flex-1 transition-all duration-500 ease-out relative overflow-hidden rounded-full",
   {
     variants: {
       variant: {
@@ -67,7 +67,7 @@ const Progress = React.forwardRef<
   return (
     <div className="w-full">
       {(label || showValue) && (
-        <div className="flex justify-between items-center mb-1">
+        <div className="flex justify-between items-center mb-2">
           {label && (
             <span className="text-sm font-medium text-foreground">{label}</span>
           )}
@@ -93,7 +93,7 @@ const Progress = React.forwardRef<
           style={{ transform: `translateX(-${100 - safeValue}%)` }}
         >
           {animated && (
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-foreground/20 to-transparent animate-shimmer" />
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-foreground/10 to-transparent animate-shimmer" />
           )}
         </ProgressPrimitive.Indicator>
       </ProgressPrimitive.Root>
