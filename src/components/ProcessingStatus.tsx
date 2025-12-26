@@ -1,6 +1,5 @@
 import { memo, useMemo } from 'react';
-import { Loader2, CheckCircle2, AlertCircle, Scissors } from 'lucide-react';
-import { Progress } from '@/components/ui/progress';
+import { Progress, LoaderIcon, ScissorsIcon, CheckCircleIcon, AlertCircleIcon } from '@/components/ui/ui';
 import type { ProcessingStatus as ProcessingStatusType } from '@/types/video';
 import { TRANSLATIONS } from '@/constants/translations';
 
@@ -12,24 +11,22 @@ interface ProcessingStatusProps {
   processedChunks: number;
 }
 
-const StatusIcon = memo(({ status }: { status: ProcessingStatusType }) => {
+const StatusIcon = memo(function StatusIcon({ status }: { status: ProcessingStatusType }) {
   switch (status) {
     case 'loading':
-      return <Loader2 className="w-8 h-8 text-primary animate-spin" aria-hidden="true" />;
+      return <LoaderIcon className="w-8 h-8 text-primary" aria-hidden="true" />;
     case 'processing':
-      return <Scissors className="w-8 h-8 text-primary animate-pulse" aria-hidden="true" />;
+      return <ScissorsIcon className="w-8 h-8 text-primary animate-pulse" aria-hidden="true" />;
     case 'complete':
-      return <CheckCircle2 className="w-8 h-8 text-success" aria-hidden="true" />;
+      return <CheckCircleIcon className="w-8 h-8 text-success" aria-hidden="true" />;
     case 'error':
-      return <AlertCircle className="w-8 h-8 text-destructive" aria-hidden="true" />;
+      return <AlertCircleIcon className="w-8 h-8 text-destructive" aria-hidden="true" />;
     default:
       return null;
   }
 });
 
-StatusIcon.displayName = 'StatusIcon';
-
-export const ProcessingStatus = memo(({ status, progress, currentStep, totalChunks, processedChunks }: ProcessingStatusProps) => {
+export const ProcessingStatus = memo(function ProcessingStatus({ status, progress, currentStep, totalChunks, processedChunks }: ProcessingStatusProps) {
   if (status === 'idle') return null;
 
   const statusTitle = useMemo(() => {
@@ -93,5 +90,3 @@ export const ProcessingStatus = memo(({ status, progress, currentStep, totalChun
     </div>
   );
 });
-
-ProcessingStatus.displayName = 'ProcessingStatus';

@@ -1,12 +1,10 @@
 import { useState, useCallback, useMemo } from 'react';
 import JSZip from 'jszip';
-import { Scissors, RefreshCcw, Sparkles } from 'lucide-react';
 import { UploadZone } from '@/components/UploadZone';
 import { ProcessingStatus } from '@/components/ProcessingStatus';
 import { DownloadSection } from '@/components/DownloadSection';
 import { useVideoProcessor } from '@/hooks/useVideoProcessor';
-import { Button } from '@/components/ui/button';
-import { useToast } from '@/hooks/use-toast';
+import { Button, ScissorsIcon, RefreshIcon, SparklesIcon, useToast } from '@/components/ui/ui';
 import type { VideoChunk } from '@/types/video';
 import { FILE_CONFIG } from '@/constants/config';
 import { TRANSLATIONS } from '@/constants/translations';
@@ -93,7 +91,7 @@ const Index = () => {
     <div className="min-h-screen py-16 px-6 sm:px-8 lg:px-12">
       <header className="text-center mb-16 animate-fade-in">
         <div className="inline-flex items-center justify-center w-24 h-24 rounded-3xl gradient-accent mb-8 apple-shadow glow-strong animate-float">
-          <Scissors className="w-12 h-12 text-primary-foreground" aria-hidden="true" />
+          <ScissorsIcon className="w-12 h-12 text-primary-foreground" aria-hidden="true" />
         </div>
 
         <h1 className="text-5xl sm:text-6xl font-bold text-foreground mb-6 tracking-tight">
@@ -106,7 +104,7 @@ const Index = () => {
         </p>
         
         <div className="inline-flex items-center gap-2 mt-4 px-4 py-2 rounded-full bg-secondary/50 glass-border">
-          <Sparkles className="w-4 h-4 text-primary" aria-hidden="true" />
+          <SparklesIcon className="w-4 h-4 text-primary" aria-hidden="true" />
           <span className="text-sm text-muted-foreground">{TRANSLATIONS.index.youtubeSupport}</span>
         </div>
       </header>
@@ -122,7 +120,7 @@ const Index = () => {
 
             <div className="flex justify-center">
               <Button variant="outline" size="lg" onClick={reset} className="apple-hover">
-                <RefreshCcw className="w-4 h-4 mr-2" aria-hidden="true" />
+                <RefreshIcon className="w-4 h-4 mr-2" aria-hidden="true" />
                 {TRANSLATIONS.index.newVideo}
               </Button>
             </div>
@@ -134,7 +132,7 @@ const Index = () => {
             <div className="glass glass-border apple-shadow rounded-3xl p-10 max-w-md mx-auto" role="alert">
               <p className="text-destructive mb-6 text-lg">{currentStep}</p>
               <Button variant="outline" size="lg" onClick={reset} className="apple-hover">
-                <RefreshCcw className="w-4 h-4 mr-2" aria-hidden="true" />
+                <RefreshIcon className="w-4 h-4 mr-2" aria-hidden="true" />
                 {TRANSLATIONS.index.retry}
               </Button>
             </div>
