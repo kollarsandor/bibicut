@@ -1,11 +1,14 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useEffect, useRef, useCallback, useMemo } from 'react';
 import JSZip from 'jszip';
-import { UploadZone } from '@/components/UploadZone';
-import { ProcessingStatus } from '@/components/ProcessingStatus';
-import { DownloadSection } from '@/components/DownloadSection';
-import { useVideoProcessor } from '@/hooks/useVideoProcessor';
-import { Button, ScissorsIcon, RefreshIcon, SparklesIcon, useToast } from '@/components/ui/ui';
-import type { VideoChunk } from '@/types/video';
+import { createSignal, createEffect, batch } from '@/core/signal';
+import { cloneTemplate } from '@/core/templates';
+import { on } from '@/core/dom';
+import { getVideoProcessorStore } from '@/stores/videoProcessor';
+import { Toaster, toast, Button, ScissorsIcon, RefreshIcon, SparklesIcon } from '@/components/ui/ui';
+import { createUploadZoneElement } from '@/components/native/UploadZone';
+import { createProcessingStatusElement } from '@/components/native/ProcessingStatus';
+import { createDownloadSectionElement } from '@/components/native/DownloadSection';
+import type { VideoChunk, ProcessingStatus } from '@/types/video';
 import { FILE_CONFIG } from '@/constants/config';
 import { TRANSLATIONS } from '@/constants/translations';
 
@@ -21,36 +24,36 @@ const downloadBlob = (blob: Blob, filename: string): void => {
 };
 
 const Index = () => {
-  const { toast } = useToast();
-  const [isDownloading, setIsDownloading] = useState(false);
-  const { status, progress, currentStep, chunks, totalChunks, processedChunks, processVideo, processYoutubeUrl, reset } = useVideoProcessor();
+  const containerRef = useRef<HTMLDivElement>(null);
+  const uploadZoneRef = useRef<ReturnType<typeof createUploadZoneElement> | null>(null);
+  const processingStatusRef = useRef<ReturnType<typeof createProcessingStatusElement> | null>(null);
+  const downloadSectionRef = useRef<ReturnType<typeof createDownloadSectionElement> | null>(null);
+  const storeRef = useRef(getVideoProcessorStore());
+  const cleanupRef = useRef<(() => void)[]>([]);
+  
+  const [isDownloading, setIsDownloading] = createSignal(false);
 
-  const handleFileSelect = useCallback(
-    async (file: File) => {
-      const fileSizeMb = file.size / FILE_CONFIG.BYTES_PER_MB;
-      toast({
-        title: TRANSLATIONS.index.videoSelected,
-        description: `${file.name} (${fileSizeMb.toFixed(1)} MB)`,
-      });
-      await processVideo(file);
-    },
-    [toast, processVideo]
-  );
+  const handleFileSelect = useCallback(async (file: File) => {
+    const fileSizeMb = file.size / FILE_CONFIG.BYTES_PER_MB;
+    toast({
+      title: TRANSLATIONS.index.videoSelected,
+      description: `${file.name} (${fileSizeMb.toFixed(1)} MB)`,
+    });
+    await storeRef.current.actions.processVideo(file);
+  }, []);
 
-  const handleYoutubeUrl = useCallback(
-    async (url: string) => {
-      toast({
-        title: TRANSLATIONS.index.youtubeProcessing,
-        description: TRANSLATIONS.index.youtubeProcessingDesc,
-      });
-      await processYoutubeUrl(url);
-    },
-    [toast, processYoutubeUrl]
-  );
+  const handleYoutubeUrl = useCallback(async (url: string) => {
+    toast({
+      title: TRANSLATIONS.index.youtubeProcessing,
+      description: TRANSLATIONS.index.youtubeProcessingDesc,
+    });
+    await storeRef.current.actions.processYoutubeUrl(url);
+  }, []);
 
   const handleDownloadAll = useCallback(async () => {
     setIsDownloading(true);
     try {
+      const chunks = storeRef.current.getChunks();
       const zip = new JSZip();
       const chunksLen = chunks.length;
 
@@ -74,13 +77,122 @@ const Index = () => {
       });
     }
     setIsDownloading(false);
-  }, [chunks, toast]);
+  }, []);
 
   const handleDownloadSingle = useCallback((chunk: VideoChunk) => {
     downloadBlob(chunk.blob, chunk.name);
   }, []);
 
-  const isProcessing = useMemo(() => status === 'loading' || status === 'processing', [status]);
+  const handleReset = useCallback(() => {
+    storeRef.current.actions.reset();
+  }, []);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    
+    const store = storeRef.current;
+    const mainContent = container.querySelector('[data-main-content]') as HTMLElement;
+    if (!mainContent) return;
+    
+    const uploadContainer = document.createElement('div');
+    uploadContainer.dataset.uploadZone = '';
+    
+    const processingContainer = document.createElement('div');
+    processingContainer.dataset.processingStatus = '';
+    
+    const downloadContainer = document.createElement('div');
+    downloadContainer.dataset.downloadSection = '';
+    
+    mainContent.appendChild(uploadContainer);
+    mainContent.appendChild(processingContainer);
+    mainContent.appendChild(downloadContainer);
+    
+    const uploadZone = createUploadZoneElement(handleFileSelect, handleYoutubeUrl);
+    uploadZoneRef.current = uploadZone;
+    uploadContainer.appendChild(uploadZone.element);
+    
+    const processingStatus = createProcessingStatusElement();
+    processingStatusRef.current = processingStatus;
+    processingContainer.appendChild(processingStatus.element);
+    processingStatus.update('idle', 0, '', 0, 0);
+    
+    const downloadSection = createDownloadSectionElement(handleDownloadAll, handleDownloadSingle);
+    downloadSectionRef.current = downloadSection;
+    downloadContainer.appendChild(downloadSection.element);
+    downloadSection.update([], false);
+    
+    const errorContainer = container.querySelector('[data-error-container]') as HTMLElement;
+    const completeActions = container.querySelector('[data-complete-actions]') as HTMLElement;
+    
+    const updateUI = (): void => {
+      const status = store.getStatus();
+      const progress = store.getProgress();
+      const currentStep = store.getCurrentStep();
+      const chunks = store.getChunks();
+      const totalChunks = store.getTotalChunks();
+      const processedChunks = store.getProcessedChunks();
+      const downloading = isDownloading();
+      
+      const isProcessing = status === 'loading' || status === 'processing';
+      
+      if (status === 'idle') {
+        uploadZone.element.style.display = '';
+        uploadZone.setProcessing(false);
+      } else {
+        uploadZone.element.style.display = 'none';
+      }
+      
+      if (status === 'loading' || status === 'processing') {
+        processingStatus.update(status, progress, currentStep, totalChunks, processedChunks);
+      } else {
+        processingStatus.update('idle', 0, '', 0, 0);
+      }
+      
+      if (status === 'complete') {
+        downloadSection.update(chunks, downloading);
+        if (completeActions) {
+          completeActions.style.display = '';
+        }
+      } else {
+        downloadSection.update([], false);
+        if (completeActions) {
+          completeActions.style.display = 'none';
+        }
+      }
+      
+      if (errorContainer) {
+        if (status === 'error') {
+          errorContainer.style.display = '';
+          const errorText = errorContainer.querySelector('[data-error-text]');
+          if (errorText) {
+            errorText.textContent = currentStep;
+          }
+        } else {
+          errorContainer.style.display = 'none';
+        }
+      }
+    };
+    
+    const unsubscribe = store.subscribe(updateUI);
+    cleanupRef.current.push(unsubscribe);
+    
+    const downloadingCleanup = createEffect(() => {
+      isDownloading();
+      updateUI();
+    });
+    cleanupRef.current.push(downloadingCleanup);
+    
+    updateUI();
+    
+    return () => {
+      cleanupRef.current.forEach(fn => fn());
+      cleanupRef.current = [];
+      uploadZone.destroy();
+      processingStatus.destroy();
+      downloadSection.destroy();
+    };
+  }, [handleFileSelect, handleYoutubeUrl, handleDownloadAll, handleDownloadSingle]);
 
   const titleParts = useMemo(() => {
     const parts = TRANSLATIONS.index.title.split(' ');
@@ -88,7 +200,7 @@ const Index = () => {
   }, []);
 
   return (
-    <div className="min-h-screen py-16 px-6 sm:px-8 lg:px-12">
+    <div ref={containerRef} className="min-h-screen py-16 px-6 sm:px-8 lg:px-12">
       <header className="text-center mb-16 animate-fade-in">
         <div className="inline-flex items-center justify-center w-24 h-24 rounded-3xl gradient-accent mb-8 apple-shadow glow-strong animate-float">
           <ScissorsIcon className="w-12 h-12 text-primary-foreground" aria-hidden="true" />
@@ -109,36 +221,33 @@ const Index = () => {
         </div>
       </header>
 
-      <main className="space-y-10">
-        {status === 'idle' && <UploadZone onFileSelect={handleFileSelect} onYoutubeUrl={handleYoutubeUrl} isProcessing={isProcessing} />}
-
-        {(status === 'loading' || status === 'processing') && <ProcessingStatus status={status} progress={progress} currentStep={currentStep} totalChunks={totalChunks} processedChunks={processedChunks} />}
-
-        {status === 'complete' && (
-          <>
-            <DownloadSection chunks={chunks} onDownloadAll={handleDownloadAll} onDownloadSingle={handleDownloadSingle} isDownloading={isDownloading} />
-
-            <div className="flex justify-center">
-              <Button variant="outline" size="lg" onClick={reset} className="apple-hover">
-                <RefreshIcon className="w-4 h-4 mr-2" aria-hidden="true" />
-                {TRANSLATIONS.index.newVideo}
-              </Button>
-            </div>
-          </>
-        )}
-
-        {status === 'error' && (
-          <div className="text-center animate-fade-in">
-            <div className="glass glass-border apple-shadow rounded-3xl p-10 max-w-md mx-auto" role="alert">
-              <p className="text-destructive mb-6 text-lg">{currentStep}</p>
-              <Button variant="outline" size="lg" onClick={reset} className="apple-hover">
-                <RefreshIcon className="w-4 h-4 mr-2" aria-hidden="true" />
-                {TRANSLATIONS.index.retry}
-              </Button>
-            </div>
-          </div>
-        )}
+      <main className="space-y-10" data-main-content>
       </main>
+
+      <div 
+        data-error-container 
+        className="text-center animate-fade-in" 
+        style={{ display: 'none' }}
+      >
+        <div className="glass glass-border apple-shadow rounded-3xl p-10 max-w-md mx-auto" role="alert">
+          <p className="text-destructive mb-6 text-lg" data-error-text></p>
+          <Button variant="outline" size="lg" onClick={handleReset} className="apple-hover">
+            <RefreshIcon className="w-4 h-4 mr-2" aria-hidden="true" />
+            {TRANSLATIONS.index.retry}
+          </Button>
+        </div>
+      </div>
+
+      <div 
+        data-complete-actions 
+        className="flex justify-center mt-10" 
+        style={{ display: 'none' }}
+      >
+        <Button variant="outline" size="lg" onClick={handleReset} className="apple-hover">
+          <RefreshIcon className="w-4 h-4 mr-2" aria-hidden="true" />
+          {TRANSLATIONS.index.newVideo}
+        </Button>
+      </div>
 
       <footer className="mt-20 text-center">
         <p className="text-sm text-muted-foreground/60">{TRANSLATIONS.index.footerLine1}</p>

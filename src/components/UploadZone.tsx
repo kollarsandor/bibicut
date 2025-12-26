@@ -1,4 +1,4 @@
-import { useCallback, useState, useMemo, useRef, memo } from 'react';
+import { useCallback, useState, useRef, memo } from 'react';
 import { Button, UploadIcon, FilmIcon, LinkIcon } from '@/components/ui/ui';
 import { FILE_CONFIG } from '@/constants/config';
 import { TRANSLATIONS } from '@/constants/translations';
@@ -47,7 +47,7 @@ export const UploadZone = memo(function UploadZone({ onFileSelect, onYoutubeUrl,
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const isValidYoutubeUrl = useMemo(() => validateYoutubeUrl(youtubeUrl), [youtubeUrl]);
+  const isValidYoutubeUrl = validateYoutubeUrl(youtubeUrl);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
