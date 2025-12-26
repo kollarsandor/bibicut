@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react';
+import { memo } from 'react';
 import { Progress, LoaderIcon, ScissorsIcon, CheckCircleIcon, AlertCircleIcon } from '@/components/ui/ui';
 import type { ProcessingStatus as ProcessingStatusType } from '@/types/video';
 import { TRANSLATIONS } from '@/constants/translations';
@@ -26,25 +26,26 @@ const StatusIcon = memo(function StatusIcon({ status }: { status: ProcessingStat
   }
 });
 
+const getStatusTitle = (status: ProcessingStatusType): string => {
+  switch (status) {
+    case 'loading':
+      return TRANSLATIONS.status.loading;
+    case 'processing':
+      return TRANSLATIONS.status.processing;
+    case 'complete':
+      return TRANSLATIONS.status.complete;
+    case 'error':
+      return TRANSLATIONS.status.error;
+    default:
+      return '';
+  }
+};
+
 export const ProcessingStatus = memo(function ProcessingStatus({ status, progress, currentStep, totalChunks, processedChunks }: ProcessingStatusProps) {
   if (status === 'idle') return null;
 
-  const statusTitle = useMemo(() => {
-    switch (status) {
-      case 'loading':
-        return TRANSLATIONS.status.loading;
-      case 'processing':
-        return TRANSLATIONS.status.processing;
-      case 'complete':
-        return TRANSLATIONS.status.complete;
-      case 'error':
-        return TRANSLATIONS.status.error;
-      default:
-        return '';
-    }
-  }, [status]);
-
-  const progressPercent = useMemo(() => Math.round(progress), [progress]);
+  const statusTitle = getStatusTitle(status);
+  const progressPercent = Math.round(progress);
 
   return (
     <div 

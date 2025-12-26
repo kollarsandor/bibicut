@@ -111,3 +111,35 @@ export {
   whenIdle,
   cancelIdle
 } from './scheduler';
+
+export {
+  createObjectPool,
+  acquireChunkData,
+  releaseChunkData,
+  clearChunkDataPool,
+  createBitset,
+  setBit as setPoolBit,
+  clearBit as clearPoolBit,
+  testBit as testPoolBit,
+  countSetBits as countPoolSetBits,
+  calculateProgressFromBitset,
+  createProgressTracker,
+  type ObjectPool,
+  type ChunkData,
+  type ProgressTracker
+} from './pool';
+
+export {
+  getTemplate,
+  cloneTemplate,
+  createIconSvg,
+  BUTTON_TEMPLATE,
+  PROGRESS_TEMPLATE,
+  TOAST_TEMPLATE,
+  PROCESSING_STATUS_TEMPLATE,
+  DOWNLOAD_SECTION_TEMPLATE,
+  CHUNK_ITEM_TEMPLATE,
+  UPLOAD_ZONE_TEMPLATE,
+  UPLOAD_DROP_ZONE_TEMPLATE,
+  YOUTUBE_INPUT_TEMPLATE
+} from './templates';

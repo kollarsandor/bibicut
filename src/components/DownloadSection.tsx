@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo } from 'react';
+import { memo, useCallback } from 'react';
 import { Button, DownloadIcon, FileVideoIcon, ClockIcon } from '@/components/ui/ui';
 import type { VideoChunk } from '@/types/video';
 import { TRANSLATIONS } from '@/constants/translations';
@@ -29,10 +29,7 @@ const ChunkItem = memo(function ChunkItem({ chunk, index, onDownload }: ChunkIte
     onDownload(chunk);
   }, [chunk, onDownload]);
 
-  const timeRange = useMemo(() => 
-    formatTime(chunk.startTime) + ' – ' + formatTime(chunk.endTime),
-    [chunk.startTime, chunk.endTime]
-  );
+  const timeRange = formatTime(chunk.startTime) + ' – ' + formatTime(chunk.endTime);
 
   return (
     <div 
@@ -69,7 +66,7 @@ export const DownloadSection = memo(function DownloadSection({ chunks, onDownloa
   
   if (chunksLen === 0) return null;
 
-  const chunkCountText = useMemo(() => TRANSLATIONS.download.chunkCount(chunksLen), [chunksLen]);
+  const chunkCountText = TRANSLATIONS.download.chunkCount(chunksLen);
 
   return (
     <div className="w-full max-w-2xl mx-auto animate-fade-in">
