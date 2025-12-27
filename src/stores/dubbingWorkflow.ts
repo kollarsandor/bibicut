@@ -2,7 +2,7 @@ import { createSignal, batch } from '@/core/signal';
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { toBlobURL } from '@ffmpeg/util';
 import type { VideoChunk } from '@/types/video';
-import { VIDEO_PROCESSOR_CONFIG, FILE_CONFIG } from '@/constants/config';
+import { VIDEO_PROCESSOR_CONFIG } from '@/constants/config';
 
 export type DubbingStatus = 'idle' | 'preparing' | 'awaiting_dubbed' | 'merging' | 'replacing' | 'complete' | 'error';
 
@@ -316,8 +316,8 @@ export function createDubbingWorkflowStore(): DubbingWorkflowStore {
       
       await ffmpeg.exec([
         '-i', 'merged_audio.aac',
-        '-codec:a', 'libmp3lame',
-        '-qscale:a', '2',
+        '-c:a', 'aac',
+        '-b:a', '192k',
         'merged_audio.mp3'
       ]);
       

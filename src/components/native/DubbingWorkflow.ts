@@ -186,7 +186,6 @@ export function createDubbingWorkflowElement(
     
     const isProcessing = status === 'merging' || status === 'replacing';
     const isComplete = status === 'complete';
-    const isAwaiting = status === 'awaiting_dubbed';
     
     if (isProcessing || isComplete) {
       uploadSection.style.display = 'none';
