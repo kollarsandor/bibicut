@@ -10,6 +10,13 @@ interface ChunkItemProps {
   onDownload: (chunk: VideoChunk) => void;
 }
 
+interface DownloadSectionProps {
+  chunks: VideoChunk[];
+  onDownloadAll: () => void;
+  onDownloadSingle: (chunk: VideoChunk) => void;
+  isDownloading: boolean;
+}
+
 const ChunkItem = memo(function ChunkItem({ chunk, index, onDownload }: ChunkItemProps) {
   const handleClick = useCallback(() => {
     onDownload(chunk);
