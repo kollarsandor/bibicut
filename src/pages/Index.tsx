@@ -1,14 +1,14 @@
 import { useEffect, useRef, useCallback, useMemo } from 'react';
 import JSZip from 'jszip';
-import { createSignal, createEffect, batch } from '@/core/signal';
+import { createSignal, createEffect } from '@/core/signal';
 import { getVideoProcessorStore } from '@/stores/videoProcessor';
 import { getDubbingWorkflowStore } from '@/stores/dubbingWorkflow';
-import { Toaster, toast, Button, ScissorsIcon, RefreshIcon, SparklesIcon } from '@/components/ui/ui';
+import { toast, Button, ScissorsIcon, RefreshIcon, SparklesIcon } from '@/components/ui/ui';
 import { createUploadZoneElement } from '@/components/native/UploadZone';
 import { createProcessingStatusElement } from '@/components/native/ProcessingStatus';
 import { createDownloadSectionElement } from '@/components/native/DownloadSection';
 import { createDubbingWorkflowElement } from '@/components/native/DubbingWorkflow';
-import type { VideoChunk, ProcessingStatus } from '@/types/video';
+import type { VideoChunk } from '@/types/video';
 import { FILE_CONFIG } from '@/constants/config';
 import { TRANSLATIONS } from '@/constants/translations';
 
@@ -54,6 +54,12 @@ const Index = () => {
       description: TRANSLATIONS.index.youtubeProcessingDesc,
     });
     await storeRef.current.actions.processYoutubeUrl(url);
+    const chunks = storeRef.current.getChunks();
+    if (chunks.length > 0 && chunks[0].blob) {
+      const allChunksBlob = new Blob(chunks.map(c => c.blob), { type: 'video/mp4' });
+      originalVideoBlobRef.current = allChunksBlob;
+      originalVideoNameRef.current = 'youtube_video.mp4';
+    }
   }, []);
 
   const handleDownloadAll = useCallback(async () => {
