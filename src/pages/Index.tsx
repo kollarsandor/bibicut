@@ -8,6 +8,8 @@ import { createUploadZoneElement } from '@/components/native/UploadZone';
 import { createProcessingStatusElement } from '@/components/native/ProcessingStatus';
 import { createDownloadSectionElement } from '@/components/native/DownloadSection';
 import { createDubbingWorkflowElement } from '@/components/native/DubbingWorkflow';
+import { createDubbingWorkflowElement as createDubbingBotElement, DubbingWorkflowState } from '@/components/native/DubbingBot';
+import { getAutomationStore } from '@/stores/automation';
 import type { VideoChunk } from '@/types/video';
 import { FILE_CONFIG } from '@/constants/config';
 import { TRANSLATIONS } from '@/constants/translations';
@@ -31,6 +33,8 @@ const Index = () => {
   const dubbingWorkflowRef = useRef<ReturnType<typeof createDubbingWorkflowElement> | null>(null);
   const storeRef = useRef(getVideoProcessorStore());
   const dubbingStoreRef = useRef(getDubbingWorkflowStore());
+  const automationStoreRef = useRef(getAutomationStore());
+  const dubbingBotRef = useRef<ReturnType<typeof createDubbingBotElement> | null>(null);
   const cleanupRef = useRef<(() => void)[]>([]);
   const originalVideoBlobRef = useRef<Blob | null>(null);
   const originalVideoNameRef = useRef<string>('');
@@ -181,10 +185,14 @@ const Index = () => {
     const dubbingContainer = document.createElement('div');
     dubbingContainer.dataset.dubbingWorkflow = '';
     
+    const dubbingBotContainer = document.createElement('div');
+    dubbingBotContainer.dataset.dubbingBot = '';
+    
     mainContent.appendChild(uploadContainer);
     mainContent.appendChild(processingContainer);
     mainContent.appendChild(downloadContainer);
     mainContent.appendChild(dubbingContainer);
+    mainContent.appendChild(dubbingBotContainer);
     
     const uploadZone = createUploadZoneElement(handleFileSelect, handleYoutubeUrl);
     uploadZoneRef.current = uploadZone;
@@ -211,6 +219,38 @@ const Index = () => {
     dubbingWorkflowRef.current = dubbingWorkflow;
     dubbingContainer.appendChild(dubbingWorkflow.element);
     dubbingWorkflow.update('idle', 0, '', [], 0, 0, false, false);
+    
+    const automationStore = automationStoreRef.current;
+    const dubbingBot = createDubbingBotElement(
+      (videoPath) => automationStore.startWorkflow(videoPath),
+      (file) => automationStore.uploadVideo(file),
+      () => automationStore.connect(),
+      () => automationStore.disconnect()
+    );
+    dubbingBotRef.current = dubbingBot;
+    dubbingBotContainer.appendChild(dubbingBot.element);
+    
+    const updateBotUI = () => {
+      const status = automationStore.getStatus();
+      const connected = automationStore.getConnected();
+      const result = automationStore.getResult();
+      
+      const state: DubbingWorkflowState = {
+        status: status.status,
+        message: status.message,
+        progress: status.progress,
+        currentChunk: status.currentChunk,
+        totalChunks: status.totalChunks,
+        phase: status.phase,
+        connected,
+        result
+      };
+      
+      dubbingBot.update(state);
+    };
+    
+    const botInterval = setInterval(updateBotUI, 500);
+    cleanupRef.current.push(() => clearInterval(botInterval));
     
     const errorContainer = container.querySelector('[data-error-container]') as HTMLElement;
     const completeActions = container.querySelector('[data-complete-actions]') as HTMLElement;
@@ -310,6 +350,7 @@ const Index = () => {
       processingStatus.destroy();
       downloadSection.destroy();
       dubbingWorkflow.destroy();
+      dubbingBot.destroy();
     };
   }, [handleFileSelect, handleYoutubeUrl, handleDownloadAll, handleDownloadSingle, handleUploadDubbedChunk, handleUploadAllDubbedChunks, handleMergeAudio, handleDownloadFinalVideo, handleDownloadMergedAudio, handleDubbingReset]);
 
