@@ -1,13 +1,13 @@
 import { useEffect, useRef, useCallback, useMemo } from 'react';
 import JSZip from 'jszip';
 import { createSignal, createEffect, batch } from '@/core/signal';
-import { cloneTemplate } from '@/core/templates';
-import { on } from '@/core/dom';
 import { getVideoProcessorStore } from '@/stores/videoProcessor';
+import { getDubbingWorkflowStore } from '@/stores/dubbingWorkflow';
 import { Toaster, toast, Button, ScissorsIcon, RefreshIcon, SparklesIcon } from '@/components/ui/ui';
 import { createUploadZoneElement } from '@/components/native/UploadZone';
 import { createProcessingStatusElement } from '@/components/native/ProcessingStatus';
 import { createDownloadSectionElement } from '@/components/native/DownloadSection';
+import { createDubbingWorkflowElement } from '@/components/native/DubbingWorkflow';
 import type { VideoChunk, ProcessingStatus } from '@/types/video';
 import { FILE_CONFIG } from '@/constants/config';
 import { TRANSLATIONS } from '@/constants/translations';
@@ -28,8 +28,12 @@ const Index = () => {
   const uploadZoneRef = useRef<ReturnType<typeof createUploadZoneElement> | null>(null);
   const processingStatusRef = useRef<ReturnType<typeof createProcessingStatusElement> | null>(null);
   const downloadSectionRef = useRef<ReturnType<typeof createDownloadSectionElement> | null>(null);
+  const dubbingWorkflowRef = useRef<ReturnType<typeof createDubbingWorkflowElement> | null>(null);
   const storeRef = useRef(getVideoProcessorStore());
+  const dubbingStoreRef = useRef(getDubbingWorkflowStore());
   const cleanupRef = useRef<(() => void)[]>([]);
+  const originalVideoBlobRef = useRef<Blob | null>(null);
+  const originalVideoNameRef = useRef<string>('');
   
   const [isDownloading, setIsDownloading] = createSignal(false);
 
@@ -39,6 +43,8 @@ const Index = () => {
       title: TRANSLATIONS.index.videoSelected,
       description: `${file.name} (${fileSizeMb.toFixed(1)} MB)`,
     });
+    originalVideoBlobRef.current = file;
+    originalVideoNameRef.current = file.name;
     await storeRef.current.actions.processVideo(file);
   }, []);
 
@@ -85,6 +91,67 @@ const Index = () => {
 
   const handleReset = useCallback(() => {
     storeRef.current.actions.reset();
+    dubbingStoreRef.current.actions.reset();
+    originalVideoBlobRef.current = null;
+    originalVideoNameRef.current = '';
+  }, []);
+
+  const handleStartDubbing = useCallback(() => {
+    const chunks = storeRef.current.getChunks();
+    const originalBlob = originalVideoBlobRef.current;
+    const originalName = originalVideoNameRef.current;
+    
+    if (!originalBlob || chunks.length === 0) {
+      toast({
+        title: 'Hiba',
+        description: 'Nincs feldolgozott videó a dubboláshoz.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
+    dubbingStoreRef.current.actions.startWorkflow(originalBlob, originalName, chunks);
+    
+    toast({
+      title: 'Dubbolás indítva',
+      description: 'Töltsd le a részleteket, dubbold le subformer.com-on, majd töltsd vissza.',
+    });
+  }, []);
+
+  const handleUploadDubbedChunk = useCallback(async (index: number, file: File) => {
+    await dubbingStoreRef.current.actions.uploadDubbedChunk(index, file);
+  }, []);
+
+  const handleUploadAllDubbedChunks = useCallback(async (files: FileList) => {
+    await dubbingStoreRef.current.actions.uploadAllDubbedChunks(files);
+  }, []);
+
+  const handleMergeAudio = useCallback(async () => {
+    toast({
+      title: 'Feldolgozás',
+      description: 'Hanganyagok összefűzése és csere folyamatban...',
+    });
+    await dubbingStoreRef.current.actions.mergeAudioAndReplace();
+  }, []);
+
+  const handleDownloadFinalVideo = useCallback(() => {
+    dubbingStoreRef.current.actions.downloadFinalVideo();
+    toast({
+      title: 'Letöltés',
+      description: 'Magyar szinkronos videó letöltése megkezdődött.',
+    });
+  }, []);
+
+  const handleDownloadMergedAudio = useCallback(() => {
+    dubbingStoreRef.current.actions.downloadMergedAudio();
+    toast({
+      title: 'Letöltés',
+      description: 'Magyar hanganyag MP3 letöltése megkezdődött.',
+    });
+  }, []);
+
+  const handleDubbingReset = useCallback(() => {
+    dubbingStoreRef.current.actions.reset();
   }, []);
 
   useEffect(() => {
@@ -92,6 +159,7 @@ const Index = () => {
     if (!container) return;
     
     const store = storeRef.current;
+    const dubbingStore = dubbingStoreRef.current;
     const mainContent = container.querySelector('[data-main-content]') as HTMLElement;
     if (!mainContent) return;
     
@@ -104,9 +172,13 @@ const Index = () => {
     const downloadContainer = document.createElement('div');
     downloadContainer.dataset.downloadSection = '';
     
+    const dubbingContainer = document.createElement('div');
+    dubbingContainer.dataset.dubbingWorkflow = '';
+    
     mainContent.appendChild(uploadContainer);
     mainContent.appendChild(processingContainer);
     mainContent.appendChild(downloadContainer);
+    mainContent.appendChild(dubbingContainer);
     
     const uploadZone = createUploadZoneElement(handleFileSelect, handleYoutubeUrl);
     uploadZoneRef.current = uploadZone;
@@ -122,8 +194,21 @@ const Index = () => {
     downloadContainer.appendChild(downloadSection.element);
     downloadSection.update([], false);
     
+    const dubbingWorkflow = createDubbingWorkflowElement(
+      handleUploadDubbedChunk,
+      handleUploadAllDubbedChunks,
+      handleMergeAudio,
+      handleDownloadFinalVideo,
+      handleDownloadMergedAudio,
+      handleDubbingReset
+    );
+    dubbingWorkflowRef.current = dubbingWorkflow;
+    dubbingContainer.appendChild(dubbingWorkflow.element);
+    dubbingWorkflow.update('idle', 0, '', [], 0, 0, false, false);
+    
     const errorContainer = container.querySelector('[data-error-container]') as HTMLElement;
     const completeActions = container.querySelector('[data-complete-actions]') as HTMLElement;
+    const startDubbingButton = container.querySelector('[data-start-dubbing]') as HTMLElement;
     
     const updateUI = (): void => {
       const status = store.getStatus();
@@ -134,9 +219,16 @@ const Index = () => {
       const processedChunks = store.getProcessedChunks();
       const downloading = isDownloading();
       
-      const isProcessing = status === 'loading' || status === 'processing';
+      const dubbingStatus = dubbingStore.getStatus();
+      const dubbingProgress = dubbingStore.getProgress();
+      const dubbingStep = dubbingStore.getCurrentStep();
+      const dubbedChunks = dubbingStore.getDubbedChunks();
+      const dubbingTotalChunks = dubbingStore.getTotalChunks();
+      const dubbingCompletedChunks = dubbingStore.getCompletedChunks();
+      const hasFinalVideo = dubbingStore.getFinalVideoBlob() !== null;
+      const hasMergedAudio = dubbingStore.getMergedAudioBlob() !== null;
       
-      if (status === 'idle') {
+      if (status === 'idle' && dubbingStatus === 'idle') {
         uploadZone.element.style.display = '';
         uploadZone.setProcessing(false);
       } else {
@@ -149,17 +241,34 @@ const Index = () => {
         processingStatus.update('idle', 0, '', 0, 0);
       }
       
-      if (status === 'complete') {
+      if (status === 'complete' && dubbingStatus === 'idle') {
         downloadSection.update(chunks, downloading);
         if (completeActions) {
           completeActions.style.display = '';
+        }
+        if (startDubbingButton) {
+          startDubbingButton.style.display = '';
         }
       } else {
         downloadSection.update([], false);
         if (completeActions) {
           completeActions.style.display = 'none';
         }
+        if (startDubbingButton) {
+          startDubbingButton.style.display = 'none';
+        }
       }
+      
+      dubbingWorkflow.update(
+        dubbingStatus,
+        dubbingProgress,
+        dubbingStep,
+        dubbedChunks,
+        dubbingTotalChunks,
+        dubbingCompletedChunks,
+        hasFinalVideo,
+        hasMergedAudio
+      );
       
       if (errorContainer) {
         if (status === 'error') {
@@ -177,6 +286,9 @@ const Index = () => {
     const unsubscribe = store.subscribe(updateUI);
     cleanupRef.current.push(unsubscribe);
     
+    const unsubscribeDubbing = dubbingStore.subscribe(updateUI);
+    cleanupRef.current.push(unsubscribeDubbing);
+    
     const downloadingCleanup = createEffect(() => {
       isDownloading();
       updateUI();
@@ -191,8 +303,9 @@ const Index = () => {
       uploadZone.destroy();
       processingStatus.destroy();
       downloadSection.destroy();
+      dubbingWorkflow.destroy();
     };
-  }, [handleFileSelect, handleYoutubeUrl, handleDownloadAll, handleDownloadSingle]);
+  }, [handleFileSelect, handleYoutubeUrl, handleDownloadAll, handleDownloadSingle, handleUploadDubbedChunk, handleUploadAllDubbedChunks, handleMergeAudio, handleDownloadFinalVideo, handleDownloadMergedAudio, handleDubbingReset]);
 
   const titleParts = useMemo(() => {
     const parts = TRANSLATIONS.index.title.split(' ');
@@ -240,12 +353,22 @@ const Index = () => {
 
       <div 
         data-complete-actions 
-        className="flex justify-center mt-10" 
+        className="flex flex-wrap justify-center gap-4 mt-10" 
         style={{ display: 'none' }}
       >
         <Button variant="outline" size="lg" onClick={handleReset} className="apple-hover">
           <RefreshIcon className="w-4 h-4 mr-2" aria-hidden="true" />
           {TRANSLATIONS.index.newVideo}
+        </Button>
+        <Button 
+          data-start-dubbing
+          variant="default" 
+          size="lg" 
+          onClick={handleStartDubbing} 
+          className="apple-hover"
+        >
+          <SparklesIcon className="w-4 h-4 mr-2" aria-hidden="true" />
+          Magyar Szinkron Készítés
         </Button>
       </div>
 
