@@ -17,3 +17,13 @@ export {
   type ToastType,
   type ToastStore
 } from './toast';
+
+export {
+  createDubbingWorkflowStore,
+  getDubbingWorkflowStore,
+  type DubbingWorkflowStore,
+  type DubbingWorkflowState,
+  type DubbingWorkflowActions,
+  type DubbedChunk,
+  type DubbingStatus
+} from './dubbingWorkflow';
