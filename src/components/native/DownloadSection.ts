@@ -3,6 +3,8 @@ import { cloneTemplate, DOWNLOAD_SECTION_TEMPLATE, CHUNK_ITEM_TEMPLATE } from '@
 import { on, delegate } from '@/core/dom';
 import type { VideoChunk } from '@/types/video';
 import { TRANSLATIONS } from '@/constants/translations';
+import { formatTime } from '@/core/formatTime';
+import { createVirtualList, VirtualListInstance } from '@/core/virtualList';
 
 export interface DownloadSectionElement {
   element: HTMLElement;
@@ -10,13 +12,8 @@ export interface DownloadSectionElement {
   destroy: () => void;
 }
 
-const formatTime = (seconds: number): string => {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  const minsStr = mins < 10 ? '0' + mins : String(mins);
-  const secsStr = secs < 10 ? '0' + secs : String(secs);
-  return minsStr + ':' + secsStr;
-};
+const ITEM_HEIGHT = 76;
+const VIRTUAL_THRESHOLD = 20;
 
 export function createDownloadSectionElement(
   onDownloadAll: () => void,
@@ -35,6 +32,8 @@ export function createDownloadSectionElement(
   downloadTextEl.textContent = TRANSLATIONS.download.downloadZip;
   
   let currentChunks: VideoChunk[] = [];
+  let virtualList: VirtualListInstance<VideoChunk> | null = null;
+  let useVirtual = false;
   const chunkElements = new Map<string, HTMLElement>();
   
   const downloadAllCleanup = on(downloadAllBtn, 'click', () => {
@@ -57,6 +56,7 @@ export function createDownloadSectionElement(
     const chunkEl = chunkFragment.firstElementChild as HTMLElement;
     
     chunkEl.dataset.chunkIndex = String(index);
+    chunkEl.classList.add('gpu-layer');
     
     const nameEl = chunkEl.querySelector('[data-name]') as HTMLElement;
     const timeEl = chunkEl.querySelector('[data-time]') as HTMLElement;
@@ -69,18 +69,7 @@ export function createDownloadSectionElement(
     return chunkEl;
   };
   
-  const update = (chunks: VideoChunk[], isDownloading: boolean): void => {
-    currentChunks = chunks;
-    
-    if (chunks.length === 0) {
-      element.style.display = 'none';
-      return;
-    }
-    
-    element.style.display = '';
-    countEl.textContent = TRANSLATIONS.download.chunkCount(chunks.length);
-    downloadAllBtn.disabled = isDownloading;
-    
+  const renderNormalList = (chunks: VideoChunk[]): void => {
     const existingKeys = new Set(chunkElements.keys());
     const newKeys = new Set<string>();
     
@@ -107,9 +96,59 @@ export function createDownloadSectionElement(
     });
   };
   
+  const update = (chunks: VideoChunk[], isDownloading: boolean): void => {
+    currentChunks = chunks;
+    
+    if (chunks.length === 0) {
+      element.style.display = 'none';
+      return;
+    }
+    
+    element.style.display = '';
+    countEl.textContent = TRANSLATIONS.download.chunkCount(chunks.length);
+    downloadAllBtn.disabled = isDownloading;
+    
+    const shouldUseVirtual = chunks.length > VIRTUAL_THRESHOLD;
+    
+    if (shouldUseVirtual !== useVirtual) {
+      useVirtual = shouldUseVirtual;
+      if (virtualList) {
+        virtualList.destroy();
+        virtualList = null;
+      }
+      chunkElements.forEach(el => el.remove());
+      chunkElements.clear();
+    }
+    
+    if (useVirtual) {
+      chunkListEl.className = 'max-h-80 pr-2 contain-strict';
+      chunkListEl.style.height = Math.min(chunks.length * ITEM_HEIGHT, 320) + 'px';
+      
+      if (virtualList) {
+        virtualList.update(chunks);
+      } else {
+        virtualList = createVirtualList({
+          container: chunkListEl,
+          items: chunks,
+          itemHeight: ITEM_HEIGHT,
+          renderItem: createChunkElement,
+          keyFn: (chunk, index) => chunk.name + '-' + index,
+          overscan: 5
+        });
+      }
+    } else {
+      chunkListEl.className = 'grid gap-3 max-h-80 overflow-y-auto pr-2 no-scrollbar';
+      chunkListEl.style.height = '';
+      renderNormalList(chunks);
+    }
+  };
+  
   const destroy = (): void => {
     downloadAllCleanup();
     delegateCleanup();
+    if (virtualList) {
+      virtualList.destroy();
+    }
     chunkElements.clear();
     if (element.parentNode) {
       element.parentNode.removeChild(element);

@@ -2,21 +2,7 @@ import { memo, useCallback } from 'react';
 import { Button, DownloadIcon, FileVideoIcon, ClockIcon } from '@/components/ui/ui';
 import type { VideoChunk } from '@/types/video';
 import { TRANSLATIONS } from '@/constants/translations';
-
-interface DownloadSectionProps {
-  chunks: VideoChunk[];
-  onDownloadAll: () => void;
-  onDownloadSingle: (chunk: VideoChunk) => void;
-  isDownloading: boolean;
-}
-
-const formatTime = (seconds: number): string => {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  const minsStr = mins < 10 ? '0' + mins : String(mins);
-  const secsStr = secs < 10 ? '0' + secs : String(secs);
-  return minsStr + ':' + secsStr;
-};
+import { formatTime } from '@/core/formatTime';
 
 interface ChunkItemProps {
   chunk: VideoChunk;
@@ -33,7 +19,7 @@ const ChunkItem = memo(function ChunkItem({ chunk, index, onDownload }: ChunkIte
 
   return (
     <div 
-      className="flex items-center gap-4 p-5 rounded-2xl bg-secondary/30 border border-border hover:border-muted-foreground/20 hover:bg-secondary/50 transition-all duration-300 group apple-hover" 
+      className="flex items-center gap-4 p-5 rounded-2xl bg-secondary/30 border border-border hover:border-muted-foreground/20 hover:bg-secondary/50 transition-all duration-300 group apple-hover gpu-layer" 
       role="listitem"
     >
       <div className="w-12 h-12 rounded-xl bg-primary/15 flex items-center justify-center">
